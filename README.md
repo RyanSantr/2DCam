@@ -25,7 +25,8 @@ Aplicacao desktop em Python onde sua camera e substituida por um avatar 2D anima
 - Icone de bandeja do Windows com menu rapido.
 - Editor de escala e posicao do avatar.
 - Modo performance para pausar o preview do painel.
-- Idle automatico e sombra simples do avatar.
+- Movimento vertical automatico liga/desliga.
+- Sombra simples do avatar liga/desliga.
 - Logs locais rotativos para diagnostico.
 - Botao para apagar configuracoes, perfis, caminhos de imagens e logs.
 - Modo escuro/claro.
@@ -192,7 +193,7 @@ Use os controles:
 - **Posicao X** para mover para esquerda/direita.
 - **Posicao Y** para mover para cima/baixo.
 - **Modo performance** para pausar o preview no painel principal e renderizar apenas a janela OBS.
-- **Idle automatico** para movimento leve quando parado.
+- **Movimento vertical automatico** para ligar/desligar o sobe e desce do avatar.
 - **Sombra do avatar** para dar leitura melhor no OBS.
 
 Esses ajustes tambem sao aplicados na janela **OBS Avatar Output**.

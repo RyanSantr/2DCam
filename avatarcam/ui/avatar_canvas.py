@@ -93,7 +93,7 @@ class AvatarCanvas(tk.Canvas):
         cx = w / 2 + (w * self.offset_x * 0.5)
         scale = min(w / 430, h / 520) * self.avatar_scale
         idle_bob = math.sin(self.frame / 18) * 5 * scale if self.idle_motion else 0
-        talk_bounce = min(1.0, self.level * 3) * 9 * scale if self.speaking else 0
+        talk_bounce = min(1.0, self.level * 3) * 9 * scale if self.speaking and self.idle_motion else 0
         cy = h * 0.55 + (h * self.offset_y * 0.5) + idle_bob - talk_bounce
 
         self._draw_background(w, h)

@@ -34,7 +34,7 @@ class Settings:
     performance_mode: bool = False
     expressions: dict | None = None
     active_expression: str = "Default"
-    idle_motion: bool = True
+    idle_motion: bool = False
     avatar_shadow: bool = True
     streamer_safe: bool = False
 

@@ -199,7 +199,7 @@ class AvatarCamApp(tk.Tk):
         self.dark_check.grid(row=14, column=0, sticky="w", pady=(14, 0))
         self.performance_check = ttk.Checkbutton(self.settings_frame, text="Modo performance: pausar preview", variable=self.performance_var, command=self._save_settings)
         self.performance_check.grid(row=15, column=0, sticky="w", pady=(8, 0))
-        ttk.Checkbutton(self.settings_frame, text="Idle automatico", variable=self.idle_motion_var, command=self._save_settings).grid(row=16, column=0, sticky="w", pady=(8, 0))
+        ttk.Checkbutton(self.settings_frame, text="Movimento vertical automatico", variable=self.idle_motion_var, command=self._save_settings).grid(row=16, column=0, sticky="w", pady=(8, 0))
         ttk.Checkbutton(self.settings_frame, text="Sombra do avatar", variable=self.avatar_shadow_var, command=self._save_settings).grid(row=17, column=0, sticky="w", pady=(8, 0))
         ttk.Checkbutton(self.settings_frame, text="Modo streamer seguro", variable=self.streamer_safe_var, command=self._save_settings).grid(row=18, column=0, sticky="w", pady=(8, 0))
 
