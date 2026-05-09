@@ -39,7 +39,6 @@ Aplicacao desktop em Python onde sua camera e substituida por um avatar 2D anima
 - Modo live dedicado com preset ultra, OBS atras e controles ocultos.
 - Opcao de iniciar minimizado na bandeja.
 - Integracao com Twitch Chat publico sem login.
-- Integracao com YouTube Live Chat via YouTube Data API v3.
 - Comandos de chat com cooldown para pet, modo live, teste e expressoes.
 - Logs locais rotativos para diagnostico.
 - Botao para apagar configuracoes, perfis, caminhos de imagens e logs.
@@ -76,7 +75,6 @@ Aplicacao desktop em Python onde sua camera e substituida por um avatar 2D anima
 |   |   |-- speech_detector.py
 |   |-- chat
 |   |   |-- twitch.py
-|   |   |-- youtube.py
 |   |-- ui
 |       |-- app_window.py
 |       |-- avatar_canvas.py
@@ -212,22 +210,17 @@ Expressoes:
 
 Use **Exportar** para gerar um arquivo `.avatarpack` com imagens e configuracoes principais. Use **Importar .avatarpack** para restaurar em outro PC ou compartilhar seu avatar.
 
-## Chat Da Live
+## Twitch Chat
 
 Na area **Chat da live**:
 
-1. Escolha **twitch** ou **youtube**.
-2. Para Twitch, digite o nome do canal, sem `#`.
-3. Para YouTube, digite o ID ou URL da live e uma **YouTube API key**.
-4. Se voce ja tiver o `liveChatId`, pode preencher o campo opcional.
-5. Clique em **Conectar chat**.
-6. As mensagens recentes aparecem no painel.
-7. Ative ou desative **Comandos do chat**.
-8. Ajuste o cooldown para evitar spam.
+1. Digite o nome do canal da Twitch, sem `#`.
+2. Clique em **Conectar Twitch**.
+3. As mensagens recentes aparecem no painel.
+4. Ative ou desative **Comandos do chat**.
+5. Ajuste o cooldown para evitar spam.
 
-Twitch funciona sem login. YouTube usa a API oficial, entao precisa de uma chave da YouTube Data API v3 no Google Cloud.
-
-Comandos iniciais funcionam nas duas plataformas:
+Comandos iniciais:
 
 - `!pet`: mostrar/ocultar pet.
 - `!pular` ou `!jump`: forcar reacao do pet.
@@ -235,7 +228,7 @@ Comandos iniciais funcionam nas duas plataformas:
 - `!live`: ativar modo live.
 - `!avatar nome`: carregar uma expressao salva com esse nome.
 
-A conexao e feita direto no seu PC. O app nao envia audio, imagem ou configuracao para servidor proprio.
+A conexao e feita direto com o chat publico da Twitch. Nao precisa login e nao ha envio de audio, imagem ou configuracao para terceiros.
 
 ## Calibracao
 

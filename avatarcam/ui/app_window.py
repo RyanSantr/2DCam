@@ -11,7 +11,6 @@ from tkinter import filedialog, messagebox, simpledialog, ttk
 from avatarcam.core.app_log import setup_logger
 from avatarcam.core.avatar_pack import export_avatar_pack, import_avatar_folder, import_avatar_pack
 from avatarcam.chat.twitch import TwitchChatClient
-from avatarcam.chat.youtube import YouTubeChatClient
 from avatarcam.core.hotkeys import HotkeyManager
 from avatarcam.core.settings import APP_DIR, LOG_DIR, SETTINGS_FILE
 from avatarcam.audio.microphone import MicrophoneInput
@@ -57,9 +56,7 @@ class AvatarCamApp(tk.Tk):
         self.pet_speaking_images = list(self.settings.pet_speaking_images or [])
         self.pet_loud_images = list(self.settings.pet_loud_images or [])
         self.expression_var = tk.StringVar(value=self.settings.active_expression)
-        self.twitch_chat = TwitchChatClient()
-        self.youtube_chat = YouTubeChatClient()
-        self.chat = self.twitch_chat if self.settings.chat_platform == "twitch" else self.youtube_chat
+        self.chat = TwitchChatClient()
         self.chat_command_times: dict[str, float] = {}
         self.hotkeys = HotkeyManager()
         self.tray = TrayController(self)
@@ -230,10 +227,7 @@ class AvatarCamApp(tk.Tk):
         self.pet_mirror_var = tk.BooleanVar(value=self.settings.pet_mirror)
         self.mouth_hold_var = tk.IntVar(value=self.settings.mouth_hold_ticks)
         self.auto_start_var = tk.BooleanVar(value=self.settings.auto_start_minimized)
-        self.chat_platform_var = tk.StringVar(value=self.settings.chat_platform)
         self.chat_channel_var = tk.StringVar(value=self.settings.chat_channel)
-        self.youtube_api_key_var = tk.StringVar(value=self.settings.youtube_api_key)
-        self.youtube_live_chat_id_var = tk.StringVar(value=self.settings.youtube_live_chat_id)
         self.chat_commands_var = tk.BooleanVar(value=self.settings.chat_commands_enabled)
         self.chat_cooldown_var = tk.IntVar(value=self.settings.chat_command_cooldown)
 
@@ -387,35 +381,20 @@ class AvatarCamApp(tk.Tk):
         self.chat_frame = ttk.LabelFrame(self.control_frame, text="Chat da live", padding=14)
         self.chat_frame.grid(row=19, column=0, sticky="ew", pady=(10, 10))
         self.chat_frame.columnconfigure(0, weight=1)
-        ttk.Label(self.chat_frame, text="Plataforma", style="Body.TLabel").grid(row=0, column=0, sticky="w", pady=(0, 4))
-        self.chat_platform_select = ttk.Combobox(
-            self.chat_frame,
-            textvariable=self.chat_platform_var,
-            values=("twitch", "youtube"),
-            state="readonly",
-        )
-        self.chat_platform_select.grid(row=1, column=0, sticky="ew", pady=(0, 8))
-        self.chat_platform_select.bind("<<ComboboxSelected>>", lambda _event: self._save_chat_settings())
-        ttk.Label(self.chat_frame, text="Canal Twitch ou ID/URL da live YouTube", style="Body.TLabel").grid(row=2, column=0, sticky="w", pady=(0, 4))
+        ttk.Label(self.chat_frame, text="Canal Twitch", style="Body.TLabel").grid(row=0, column=0, sticky="w", pady=(0, 4))
         self.chat_channel_entry = ttk.Entry(self.chat_frame, textvariable=self.chat_channel_var)
-        self.chat_channel_entry.grid(row=3, column=0, sticky="ew", pady=(0, 8))
-        ttk.Label(self.chat_frame, text="YouTube API key", style="Body.TLabel").grid(row=4, column=0, sticky="w", pady=(0, 4))
-        self.youtube_api_entry = ttk.Entry(self.chat_frame, textvariable=self.youtube_api_key_var, show="*")
-        self.youtube_api_entry.grid(row=5, column=0, sticky="ew", pady=(0, 8))
-        ttk.Label(self.chat_frame, text="YouTube liveChatId opcional", style="Body.TLabel").grid(row=6, column=0, sticky="w", pady=(0, 4))
-        self.youtube_chat_id_entry = ttk.Entry(self.chat_frame, textvariable=self.youtube_live_chat_id_var)
-        self.youtube_chat_id_entry.grid(row=7, column=0, sticky="ew", pady=(0, 8))
+        self.chat_channel_entry.grid(row=1, column=0, sticky="ew", pady=(0, 8))
         chat_buttons = ttk.Frame(self.chat_frame)
-        chat_buttons.grid(row=8, column=0, sticky="ew", pady=(0, 8))
+        chat_buttons.grid(row=2, column=0, sticky="ew", pady=(0, 8))
         chat_buttons.columnconfigure(0, weight=1)
         chat_buttons.columnconfigure(1, weight=1)
-        self.chat_button = ttk.Button(chat_buttons, text="Conectar chat", command=self._toggle_chat, style="Primary.TButton")
+        self.chat_button = ttk.Button(chat_buttons, text="Conectar Twitch", command=self._toggle_chat, style="Primary.TButton")
         self.chat_button.grid(row=0, column=0, sticky="ew", padx=(0, 4))
         ttk.Button(chat_buttons, text="Limpar chat", command=self._clear_chat_log).grid(row=0, column=1, sticky="ew", padx=(4, 0))
-        ttk.Checkbutton(self.chat_frame, text="Comandos do chat", variable=self.chat_commands_var, command=self._save_chat_settings).grid(row=9, column=0, sticky="w")
-        self._add_chat_slider("Cooldown comandos", self.chat_cooldown_var, 2, 60, 10)
+        ttk.Checkbutton(self.chat_frame, text="Comandos do chat", variable=self.chat_commands_var, command=self._save_chat_settings).grid(row=3, column=0, sticky="w")
+        self._add_chat_slider("Cooldown comandos", self.chat_cooldown_var, 2, 60, 4)
         self.chat_log = tk.Listbox(self.chat_frame, height=7, borderwidth=0, activestyle="none")
-        self.chat_log.grid(row=12, column=0, sticky="ew", pady=(8, 0))
+        self.chat_log.grid(row=6, column=0, sticky="ew", pady=(8, 0))
 
         self.status_label = ttk.Label(self.control_frame, text="Microfone desligado", style="Status.TLabel")
         self.status_label.grid(row=21, column=0, sticky="ew", pady=(10, 0))
@@ -533,39 +512,25 @@ class AvatarCamApp(tk.Tk):
         self.status_label.configure(text=f"Microfone: {selected}")
 
     def _toggle_chat(self) -> None:
-        if self.twitch_chat.is_running or self.youtube_chat.is_running:
-            self.twitch_chat.stop()
-            self.youtube_chat.stop()
+        if self.chat.is_running:
+            self.chat.stop()
             self.settings.chat_enabled = False
-            self.chat_button.configure(text="Conectar chat")
+            self.chat_button.configure(text="Conectar Twitch")
             self._add_chat_line("sistema", "chat desconectado")
             self._save_chat_settings()
             return
         self._save_chat_settings()
-        self.chat = self.twitch_chat if self.settings.chat_platform == "twitch" else self.youtube_chat
         try:
-            if self.settings.chat_platform == "youtube":
-                self.youtube_chat.start(
-                    self.chat_channel_var.get(),
-                    self.youtube_api_key_var.get(),
-                    self.youtube_live_chat_id_var.get(),
-                )
-            else:
-                self.twitch_chat.start(self.chat_channel_var.get())
+            self.chat.start(self.chat_channel_var.get())
         except Exception as exc:
-            messagebox.showerror("Chat da live", str(exc))
+            messagebox.showerror("Chat Twitch", str(exc))
             return
         self.settings.chat_enabled = True
         self.settings.save()
-        self.chat_button.configure(text="Desconectar chat")
+        self.chat_button.configure(text="Desconectar Twitch")
 
     def _save_chat_settings(self) -> None:
-        if self.twitch_chat.is_running or self.youtube_chat.is_running:
-            return
-        self.settings.chat_platform = self.chat_platform_var.get()
         self.settings.chat_channel = self.chat_channel_var.get().strip().lstrip("#")
-        self.settings.youtube_api_key = self.youtube_api_key_var.get().strip()
-        self.settings.youtube_live_chat_id = self.youtube_live_chat_id_var.get().strip()
         self.settings.chat_commands_enabled = self.chat_commands_var.get()
         self.settings.chat_command_cooldown = int(float(self.chat_cooldown_var.get()))
         self.settings.save()
@@ -581,17 +546,13 @@ class AvatarCamApp(tk.Tk):
         self.chat_log.see(tk.END)
 
     def _process_chat(self) -> None:
-        for client in (self.twitch_chat, self.youtube_chat):
-            for event in client.drain_events():
-                self._add_chat_line("sistema", event)
-                self.status_label.configure(text=event)
-                if "desconectado" in event.lower():
-                    self.settings.chat_enabled = False
-                    self.chat_button.configure(text="Conectar chat")
-            for message in client.drain_messages():
-                self._add_chat_line(message.user, message.text)
-                if self.settings.chat_commands_enabled:
-                    self._handle_chat_command(message.text)
+        for event in self.chat.drain_events():
+            self._add_chat_line("sistema", event)
+            self.status_label.configure(text=event)
+        for message in self.chat.drain_messages():
+            self._add_chat_line(message.user, message.text)
+            if self.settings.chat_commands_enabled:
+                self._handle_chat_command(message.text)
 
     def _handle_chat_command(self, text: str) -> None:
         parts = text.strip().split()
@@ -1236,8 +1197,7 @@ class AvatarCamApp(tk.Tk):
         if not messagebox.askyesno("Apagar dados locais", "Apagar configuracoes, perfis, caminhos de imagens e logs locais?"):
             return
         self.microphone.stop()
-        self.twitch_chat.stop()
-        self.youtube_chat.stop()
+        self.chat.stop()
         self.hotkeys.close()
         self.tray.stop()
         try:
@@ -1308,8 +1268,7 @@ class AvatarCamApp(tk.Tk):
 
     def destroy(self) -> None:
         self.log.info("AvatarCam encerrado")
-        self.twitch_chat.stop()
-        self.youtube_chat.stop()
+        self.chat.stop()
         self.tray.stop()
         self.hotkeys.close()
         self.microphone.stop()
