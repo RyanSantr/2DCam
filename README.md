@@ -38,8 +38,6 @@ Aplicacao desktop em Python onde sua camera e substituida por um avatar 2D anima
 - Controle para segurar a boca aberta por mais tempo apos a fala.
 - Modo live dedicado com preset ultra, OBS atras e controles ocultos.
 - Opcao de iniciar minimizado na bandeja.
-- Integracao com Twitch Chat publico sem login.
-- Comandos de chat com cooldown para pet, modo live, teste e expressoes.
 - Logs locais rotativos para diagnostico.
 - Botao para apagar configuracoes, perfis, caminhos de imagens e logs.
 - Modo escuro/claro.
@@ -73,8 +71,6 @@ Aplicacao desktop em Python onde sua camera e substituida por um avatar 2D anima
 |   |   |-- hotkeys.py
 |   |   |-- settings.py
 |   |   |-- speech_detector.py
-|   |-- chat
-|   |   |-- twitch.py
 |   |-- ui
 |       |-- app_window.py
 |       |-- avatar_canvas.py
@@ -209,26 +205,6 @@ Expressoes:
 ## Avatarpack
 
 Use **Exportar** para gerar um arquivo `.avatarpack` com imagens e configuracoes principais. Use **Importar .avatarpack** para restaurar em outro PC ou compartilhar seu avatar.
-
-## Twitch Chat
-
-Na area **Chat da live**:
-
-1. Digite o nome do canal da Twitch, sem `#`.
-2. Clique em **Conectar Twitch**.
-3. As mensagens recentes aparecem no painel.
-4. Ative ou desative **Comandos do chat**.
-5. Ajuste o cooldown para evitar spam.
-
-Comandos iniciais:
-
-- `!pet`: mostrar/ocultar pet.
-- `!pular` ou `!jump`: forcar reacao do pet.
-- `!teste`: acionar teste de fala.
-- `!live`: ativar modo live.
-- `!avatar nome`: carregar uma expressao salva com esse nome.
-
-A conexao e feita direto com o chat publico da Twitch. Nao precisa login e nao ha envio de audio, imagem ou configuracao para terceiros.
 
 ## Calibracao
 

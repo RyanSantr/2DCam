@@ -4,13 +4,11 @@ import math
 import os
 from pathlib import Path
 import shutil
-import time
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
 from avatarcam.core.app_log import setup_logger
 from avatarcam.core.avatar_pack import export_avatar_pack, import_avatar_folder, import_avatar_pack
-from avatarcam.chat.twitch import TwitchChatClient
 from avatarcam.core.hotkeys import HotkeyManager
 from avatarcam.core.settings import APP_DIR, LOG_DIR, SETTINGS_FILE
 from avatarcam.audio.microphone import MicrophoneInput
@@ -56,8 +54,6 @@ class AvatarCamApp(tk.Tk):
         self.pet_speaking_images = list(self.settings.pet_speaking_images or [])
         self.pet_loud_images = list(self.settings.pet_loud_images or [])
         self.expression_var = tk.StringVar(value=self.settings.active_expression)
-        self.chat = TwitchChatClient()
-        self.chat_command_times: dict[str, float] = {}
         self.hotkeys = HotkeyManager()
         self.tray = TrayController(self)
 
@@ -69,8 +65,6 @@ class AvatarCamApp(tk.Tk):
         self.protocol("WM_DELETE_WINDOW", self._hide_controls)
         if self.settings.auto_start_minimized:
             self.after(300, self.withdraw)
-        if self.settings.chat_enabled and self.settings.chat_channel:
-            self.after(600, self._toggle_chat)
         self._tick()
 
     def _configure_style(self) -> None:
@@ -227,9 +221,6 @@ class AvatarCamApp(tk.Tk):
         self.pet_mirror_var = tk.BooleanVar(value=self.settings.pet_mirror)
         self.mouth_hold_var = tk.IntVar(value=self.settings.mouth_hold_ticks)
         self.auto_start_var = tk.BooleanVar(value=self.settings.auto_start_minimized)
-        self.chat_channel_var = tk.StringVar(value=self.settings.chat_channel)
-        self.chat_commands_var = tk.BooleanVar(value=self.settings.chat_commands_enabled)
-        self.chat_cooldown_var = tk.IntVar(value=self.settings.chat_command_cooldown)
 
         self._add_slider("Sensibilidade", self.sensitivity_var, 0.04, 0.7, 0)
         self._add_slider("Suavizacao", self.smoothing_var, 0.1, 0.95, 1)
@@ -373,42 +364,24 @@ class AvatarCamApp(tk.Tk):
         ttk.Button(self.obs_frame, text="Assistente OBS", command=self._show_obs_assistant).grid(row=11, column=0, sticky="ew", pady=(8, 0))
 
         self.privacy_frame = ttk.LabelFrame(self.control_frame, text="Privacidade e diagnostico", padding=14)
-        self.privacy_frame.grid(row=20, column=0, sticky="ew", pady=(10, 10))
+        self.privacy_frame.grid(row=19, column=0, sticky="ew", pady=(10, 10))
         self.privacy_frame.columnconfigure(0, weight=1)
         ttk.Button(self.privacy_frame, text="Abrir pasta de logs", command=self._open_logs).grid(row=0, column=0, sticky="ew", pady=(0, 6))
         ttk.Button(self.privacy_frame, text="Apagar configuracoes locais", command=self._reset_privacy).grid(row=1, column=0, sticky="ew")
 
-        self.chat_frame = ttk.LabelFrame(self.control_frame, text="Chat da live", padding=14)
-        self.chat_frame.grid(row=19, column=0, sticky="ew", pady=(10, 10))
-        self.chat_frame.columnconfigure(0, weight=1)
-        ttk.Label(self.chat_frame, text="Canal Twitch", style="Body.TLabel").grid(row=0, column=0, sticky="w", pady=(0, 4))
-        self.chat_channel_entry = ttk.Entry(self.chat_frame, textvariable=self.chat_channel_var)
-        self.chat_channel_entry.grid(row=1, column=0, sticky="ew", pady=(0, 8))
-        chat_buttons = ttk.Frame(self.chat_frame)
-        chat_buttons.grid(row=2, column=0, sticky="ew", pady=(0, 8))
-        chat_buttons.columnconfigure(0, weight=1)
-        chat_buttons.columnconfigure(1, weight=1)
-        self.chat_button = ttk.Button(chat_buttons, text="Conectar Twitch", command=self._toggle_chat, style="Primary.TButton")
-        self.chat_button.grid(row=0, column=0, sticky="ew", padx=(0, 4))
-        ttk.Button(chat_buttons, text="Limpar chat", command=self._clear_chat_log).grid(row=0, column=1, sticky="ew", padx=(4, 0))
-        ttk.Checkbutton(self.chat_frame, text="Comandos do chat", variable=self.chat_commands_var, command=self._save_chat_settings).grid(row=3, column=0, sticky="w")
-        self._add_chat_slider("Cooldown comandos", self.chat_cooldown_var, 2, 60, 4)
-        self.chat_log = tk.Listbox(self.chat_frame, height=7, borderwidth=0, activestyle="none")
-        self.chat_log.grid(row=6, column=0, sticky="ew", pady=(8, 0))
-
         self.status_label = ttk.Label(self.control_frame, text="Microfone desligado", style="Status.TLabel")
-        self.status_label.grid(row=21, column=0, sticky="ew", pady=(10, 0))
+        self.status_label.grid(row=20, column=0, sticky="ew", pady=(10, 0))
         self.avatar_label = ttk.Label(
             self.control_frame,
             text="Assets carregados" if self.settings.streamer_safe else self._image_summary(),
             style="Body.TLabel",
         )
-        self.avatar_label.grid(row=22, column=0, sticky="w", pady=(8, 0))
+        self.avatar_label.grid(row=21, column=0, sticky="w", pady=(8, 0))
         hotkey_text = "Hotkeys: F8 mic, F9 teste, F10 controles, F11 OBS, F12 pet"
         if self.hotkeys.available:
             hotkey_text += " | globais ativos"
         self.hotkey_label = ttk.Label(self.control_frame, text=hotkey_text, style="Body.TLabel")
-        self.hotkey_label.grid(row=23, column=0, sticky="w", pady=(8, 0))
+        self.hotkey_label.grid(row=22, column=0, sticky="w", pady=(8, 0))
 
     def _sync_control_scroll(self, _event: tk.Event) -> None:
         self.control_canvas.configure(scrollregion=self.control_canvas.bbox("all"))
@@ -420,11 +393,6 @@ class AvatarCamApp(tk.Tk):
         ttk.Label(self.settings_frame, text=label, style="Body.TLabel").grid(row=row * 2, column=0, sticky="w", pady=(4, 4))
         slider = ttk.Scale(self.settings_frame, from_=start, to=end, variable=variable, command=lambda _value: self._save_settings())
         slider.grid(row=row * 2 + 1, column=0, sticky="ew")
-
-    def _add_chat_slider(self, label: str, variable: tk.IntVar, start: float, end: float, row: int) -> None:
-        ttk.Label(self.chat_frame, text=label, style="Body.TLabel").grid(row=row, column=0, sticky="w", pady=(8, 4))
-        slider = ttk.Scale(self.chat_frame, from_=start, to=end, variable=variable, command=lambda _value: self._save_chat_settings())
-        slider.grid(row=row + 1, column=0, sticky="ew")
 
     def _apply_theme(self) -> None:
         c = self.colors
@@ -511,71 +479,6 @@ class AvatarCamApp(tk.Tk):
         self.settings.save()
         self.status_label.configure(text=f"Microfone: {selected}")
 
-    def _toggle_chat(self) -> None:
-        if self.chat.is_running:
-            self.chat.stop()
-            self.settings.chat_enabled = False
-            self.chat_button.configure(text="Conectar Twitch")
-            self._add_chat_line("sistema", "chat desconectado")
-            self._save_chat_settings()
-            return
-        self._save_chat_settings()
-        try:
-            self.chat.start(self.chat_channel_var.get())
-        except Exception as exc:
-            messagebox.showerror("Chat Twitch", str(exc))
-            return
-        self.settings.chat_enabled = True
-        self.settings.save()
-        self.chat_button.configure(text="Desconectar Twitch")
-
-    def _save_chat_settings(self) -> None:
-        self.settings.chat_channel = self.chat_channel_var.get().strip().lstrip("#")
-        self.settings.chat_commands_enabled = self.chat_commands_var.get()
-        self.settings.chat_command_cooldown = int(float(self.chat_cooldown_var.get()))
-        self.settings.save()
-
-    def _clear_chat_log(self) -> None:
-        self.chat_log.delete(0, tk.END)
-
-    def _add_chat_line(self, user: str, text: str) -> None:
-        safe_text = text.replace("\n", " ")[:140]
-        self.chat_log.insert(tk.END, f"{user}: {safe_text}")
-        while self.chat_log.size() > 80:
-            self.chat_log.delete(0)
-        self.chat_log.see(tk.END)
-
-    def _process_chat(self) -> None:
-        for event in self.chat.drain_events():
-            self._add_chat_line("sistema", event)
-            self.status_label.configure(text=event)
-        for message in self.chat.drain_messages():
-            self._add_chat_line(message.user, message.text)
-            if self.settings.chat_commands_enabled:
-                self._handle_chat_command(message.text)
-
-    def _handle_chat_command(self, text: str) -> None:
-        parts = text.strip().split()
-        if not parts or not parts[0].startswith("!"):
-            return
-        command = parts[0].lower()
-        now = time.time()
-        cooldown = max(2, int(self.settings.chat_command_cooldown))
-        if now - self.chat_command_times.get(command, 0) < cooldown:
-            return
-        self.chat_command_times[command] = now
-
-        if command == "!pet":
-            self._toggle_pet()
-        elif command in ("!pular", "!jump"):
-            self._trigger_pet_reaction()
-        elif command == "!live":
-            self._enable_live_mode()
-        elif command == "!teste":
-            self._trigger_test()
-        elif command == "!avatar" and len(parts) > 1:
-            self._load_expression(parts[1])
-
     def _apply_performance_preset(self) -> None:
         preset = self.performance_preset_var.get()
         if preset == "quality":
@@ -602,15 +505,6 @@ class AvatarCamApp(tk.Tk):
         self.pet_enabled_var.set(not self.pet_enabled_var.get())
         self._save_settings()
         self.status_label.configure(text="Pet ligado" if self.pet_enabled_var.get() else "Pet oculto")
-
-    def _trigger_pet_reaction(self) -> None:
-        self.pet_enabled_var.set(True)
-        previous = self.pet_reaction_var.get()
-        if previous == "none":
-            self.pet_reaction_var.set("bounce")
-        self.test_ticks = max(self.test_ticks, 45)
-        self._save_settings()
-        self.status_label.configure(text="Pet reagiu ao chat")
 
     def _enable_live_mode(self) -> None:
         self.performance_preset_var.set("ultra")
@@ -1197,7 +1091,6 @@ class AvatarCamApp(tk.Tk):
         if not messagebox.askyesno("Apagar dados locais", "Apagar configuracoes, perfis, caminhos de imagens e logs locais?"):
             return
         self.microphone.stop()
-        self.chat.stop()
         self.hotkeys.close()
         self.tray.stop()
         try:
@@ -1210,7 +1103,6 @@ class AvatarCamApp(tk.Tk):
         super().destroy()
 
     def _tick(self) -> None:
-        self._process_chat()
         if self.test_ticks > 0:
             raw_level = 0.32 + math.sin(self.test_ticks / 3) * 0.12
             self.test_ticks -= 1
@@ -1268,7 +1160,6 @@ class AvatarCamApp(tk.Tk):
 
     def destroy(self) -> None:
         self.log.info("AvatarCam encerrado")
-        self.chat.stop()
         self.tray.stop()
         self.hotkeys.close()
         self.microphone.stop()
