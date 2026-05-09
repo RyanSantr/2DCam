@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import math
+from pathlib import Path
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox, simpledialog, ttk
 
+from avatarcam.core.hotkeys import HotkeyManager
 from avatarcam.audio.microphone import MicrophoneInput
 from avatarcam.core.settings import Settings
 from avatarcam.core.speech_detector import SpeechDetector
@@ -24,13 +26,23 @@ class AvatarCamApp(tk.Tk):
         self.microphone = MicrophoneInput()
         self.detector = SpeechDetector(self.settings.sensitivity, self.settings.smoothing)
         self.test_ticks = 0
+        self.calibration_samples: list[float] = []
+        self.calibration_ticks = 0
+        self.render_frames = 0
+        self.last_fps_time = 0.0
+        self.render_fps = 0
         self.obs_window: ObsOutputWindow | None = None
         self.idle_images = list(self.settings.idle_images or [])
         self.speaking_images = list(self.settings.speaking_images or [])
+        self.speaking_low_images = list(self.settings.speaking_low_images or [])
+        self.speaking_mid_images = list(self.settings.speaking_mid_images or [])
+        self.speaking_high_images = list(self.settings.speaking_high_images or [])
+        self.hotkeys = HotkeyManager()
 
         self._configure_style()
         self._build_layout()
         self._apply_theme()
+        self._bind_hotkeys()
         self._tick()
 
     def _configure_style(self) -> None:
@@ -59,7 +71,13 @@ class AvatarCamApp(tk.Tk):
 
         self.avatar_canvas = AvatarCanvas(self.stage_frame)
         self.avatar_canvas.grid(row=1, column=0, sticky="nsew")
-        self.avatar_canvas.set_image_sets(self.idle_images, self.speaking_images)
+        self.avatar_canvas.set_image_sets(
+            self.idle_images,
+            self.speaking_images,
+            self.speaking_low_images,
+            self.speaking_mid_images,
+            self.speaking_high_images,
+        )
         self.avatar_canvas.set_animation_fps(self.settings.animation_fps)
         self.avatar_canvas.set_background(self.settings.background)
 
@@ -82,18 +100,34 @@ class AvatarCamApp(tk.Tk):
         self.mic_button = ttk.Button(self.control_frame, text="Ativar microfone", command=self._toggle_microphone, style="Primary.TButton")
         self.mic_button.grid(row=2, column=0, sticky="ew", pady=5)
 
+        profile_row = ttk.Frame(self.control_frame)
+        profile_row.grid(row=3, column=0, sticky="ew", pady=(0, 5))
+        profile_row.columnconfigure(0, weight=1)
+        self.profile_var = tk.StringVar(value=self.settings.active_profile)
+        self.profile_select = ttk.Combobox(profile_row, textvariable=self.profile_var, values=self._profile_names(), state="readonly")
+        self.profile_select.grid(row=0, column=0, sticky="ew", padx=(0, 5))
+        self.profile_select.bind("<<ComboboxSelected>>", lambda _event: self._load_profile(self.profile_var.get()))
+        ttk.Button(profile_row, text="Salvar", command=self._save_profile).grid(row=0, column=1, padx=(0, 5))
+        ttk.Button(profile_row, text="Novo", command=self._new_profile).grid(row=0, column=2)
+
         self.idle_button = ttk.Button(self.control_frame, text="Escolher imagens idle", command=self._choose_idle_images)
-        self.idle_button.grid(row=3, column=0, sticky="ew", pady=5)
-        self.speaking_button = ttk.Button(self.control_frame, text="Escolher imagens falando", command=self._choose_speaking_images)
-        self.speaking_button.grid(row=4, column=0, sticky="ew", pady=5)
+        self.idle_button.grid(row=4, column=0, sticky="ew", pady=5)
+        self.speaking_button = ttk.Button(self.control_frame, text="Escolher fala padrao", command=self._choose_speaking_images)
+        self.speaking_button.grid(row=5, column=0, sticky="ew", pady=5)
+        self.speaking_levels_button = ttk.Button(self.control_frame, text="Escolher fala baixa/media/alta", command=self._choose_level_images)
+        self.speaking_levels_button.grid(row=6, column=0, sticky="ew", pady=5)
+        self.import_folder_button = ttk.Button(self.control_frame, text="Importar pasta de avatar", command=self._import_avatar_folder)
+        self.import_folder_button.grid(row=7, column=0, sticky="ew", pady=5)
         self.clear_images_button = ttk.Button(self.control_frame, text="Limpar imagens", command=self._clear_images)
-        self.clear_images_button.grid(row=5, column=0, sticky="ew", pady=5)
+        self.clear_images_button.grid(row=8, column=0, sticky="ew", pady=5)
 
         self.test_button = ttk.Button(self.control_frame, text="Teste de fala", command=self._trigger_test)
-        self.test_button.grid(row=6, column=0, sticky="ew", pady=5)
+        self.test_button.grid(row=9, column=0, sticky="ew", pady=5)
+        self.calibrate_button = ttk.Button(self.control_frame, text="Calibrar ruido ambiente", command=self._start_calibration)
+        self.calibrate_button.grid(row=10, column=0, sticky="ew", pady=5)
 
         self.settings_frame = ttk.LabelFrame(self.control_frame, text="Configuracoes", padding=14)
-        self.settings_frame.grid(row=7, column=0, sticky="ew", pady=(18, 10))
+        self.settings_frame.grid(row=11, column=0, sticky="ew", pady=(18, 10))
         self.settings_frame.columnconfigure(0, weight=1)
 
         self.sensitivity_var = tk.DoubleVar(value=self.settings.sensitivity)
@@ -104,6 +138,8 @@ class AvatarCamApp(tk.Tk):
         self.obs_top_var = tk.BooleanVar(value=self.settings.obs_always_on_top)
         self.auto_hide_var = tk.BooleanVar(value=self.settings.auto_hide_controls)
         self.animation_fps_var = tk.IntVar(value=self.settings.animation_fps)
+        self.obs_resolution_var = tk.StringVar(value=self.settings.obs_resolution)
+        self.obs_borderless_var = tk.BooleanVar(value=self.settings.obs_borderless)
 
         self._add_slider("Sensibilidade", self.sensitivity_var, 0.04, 0.7, 0)
         self._add_slider("Suavizacao", self.smoothing_var, 0.1, 0.95, 1)
@@ -123,7 +159,7 @@ class AvatarCamApp(tk.Tk):
         self.dark_check.grid(row=8, column=0, sticky="w", pady=(14, 0))
 
         self.obs_frame = ttk.LabelFrame(self.control_frame, text="OBS", padding=14)
-        self.obs_frame.grid(row=8, column=0, sticky="ew", pady=(10, 10))
+        self.obs_frame.grid(row=12, column=0, sticky="ew", pady=(10, 10))
         self.obs_frame.columnconfigure(0, weight=1)
 
         self.obs_button = ttk.Button(self.obs_frame, text="Abrir janela OBS", command=self._toggle_obs_window, style="Primary.TButton")
@@ -147,21 +183,44 @@ class AvatarCamApp(tk.Tk):
         )
         self.obs_top_check.grid(row=3, column=0, sticky="w", pady=(10, 0))
 
+        ttk.Label(self.obs_frame, text="Resolucao", style="Body.TLabel").grid(row=4, column=0, sticky="w", pady=(10, 4))
+        self.obs_resolution_select = ttk.Combobox(
+            self.obs_frame,
+            textvariable=self.obs_resolution_var,
+            values=("1280x720", "1920x1080", "1080x1920", "960x540", "640x360"),
+            state="readonly",
+        )
+        self.obs_resolution_select.grid(row=5, column=0, sticky="ew")
+        self.obs_resolution_select.bind("<<ComboboxSelected>>", lambda _event: self._save_obs_settings())
+
+        self.obs_borderless_check = ttk.Checkbutton(
+            self.obs_frame,
+            text="Janela OBS sem borda",
+            variable=self.obs_borderless_var,
+            command=self._save_obs_settings,
+        )
+        self.obs_borderless_check.grid(row=6, column=0, sticky="w", pady=(8, 0))
+
         self.auto_hide_check = ttk.Checkbutton(
             self.obs_frame,
             text="Esconder controles ao abrir OBS",
             variable=self.auto_hide_var,
             command=self._save_obs_settings,
         )
-        self.auto_hide_check.grid(row=4, column=0, sticky="w", pady=(8, 0))
+        self.auto_hide_check.grid(row=7, column=0, sticky="w", pady=(8, 0))
 
         self.hide_button = ttk.Button(self.obs_frame, text="Modo live: ocultar controles", command=self._hide_controls)
-        self.hide_button.grid(row=5, column=0, sticky="ew", pady=(10, 0))
+        self.hide_button.grid(row=8, column=0, sticky="ew", pady=(10, 0))
 
         self.status_label = ttk.Label(self.control_frame, text="Microfone desligado", style="Status.TLabel")
-        self.status_label.grid(row=9, column=0, sticky="ew", pady=(10, 0))
+        self.status_label.grid(row=13, column=0, sticky="ew", pady=(10, 0))
         self.avatar_label = ttk.Label(self.control_frame, text=self._image_summary(), style="Body.TLabel")
-        self.avatar_label.grid(row=10, column=0, sticky="w", pady=(8, 0))
+        self.avatar_label.grid(row=14, column=0, sticky="w", pady=(8, 0))
+        hotkey_text = "Hotkeys: F8 mic, F9 teste, F10 controles, F11 OBS"
+        if self.hotkeys.available:
+            hotkey_text += " | globais ativos"
+        self.hotkey_label = ttk.Label(self.control_frame, text=hotkey_text, style="Body.TLabel")
+        self.hotkey_label.grid(row=15, column=0, sticky="w", pady=(8, 0))
 
     def _add_slider(self, label: str, variable: tk.DoubleVar, start: float, end: float, row: int) -> None:
         ttk.Label(self.settings_frame, text=label, style="Body.TLabel").grid(row=row * 2, column=0, sticky="w", pady=(4, 4))
@@ -190,6 +249,21 @@ class AvatarCamApp(tk.Tk):
         self.control_frame.configure(style="Panel.TFrame")
         self.style.configure("Panel.TFrame", background=c["panel"])
         self.avatar_canvas.configure(bg=c["panel"])
+
+    def _bind_hotkeys(self) -> None:
+        self.bind("<F8>", lambda _event: self._toggle_microphone())
+        self.bind("<F9>", lambda _event: self._trigger_test())
+        self.bind("<F10>", lambda _event: self.show_controls())
+        self.bind("<F11>", lambda _event: self._toggle_obs_window())
+        self.hotkeys.register("f8", lambda: self.after(0, self._toggle_microphone))
+        self.hotkeys.register("f9", lambda: self.after(0, self._trigger_test))
+        self.hotkeys.register("f10", lambda: self.after(0, self.show_controls))
+        self.hotkeys.register("f11", lambda: self.after(0, self._toggle_obs_window))
+
+    def _profile_names(self) -> tuple[str, ...]:
+        profiles = self.settings.profiles or {}
+        names = sorted(set(profiles.keys()) | {self.settings.active_profile, "Default"})
+        return tuple(names)
 
     def _toggle_microphone(self) -> None:
         if self.microphone.is_running:
@@ -225,9 +299,48 @@ class AvatarCamApp(tk.Tk):
         self.speaking_images = paths
         self._save_image_sets()
 
+    def _choose_level_images(self) -> None:
+        low = self._pick_images("Escolha fala baixa")
+        if low:
+            self.speaking_low_images = low
+        mid = self._pick_images("Escolha fala media")
+        if mid:
+            self.speaking_mid_images = mid
+        high = self._pick_images("Escolha fala alta")
+        if high:
+            self.speaking_high_images = high
+        self._save_image_sets()
+
+    def _import_avatar_folder(self) -> None:
+        folder = filedialog.askdirectory(title="Escolha a pasta do avatar")
+        if not folder:
+            return
+
+        root = Path(folder)
+        self.idle_images = self._images_from_folder(root / "idle")
+        self.speaking_images = self._images_from_folder(root / "talk") or self._images_from_folder(root / "fala")
+        self.speaking_low_images = self._images_from_folder(root / "talk_low") or self._images_from_folder(root / "fala_baixa")
+        self.speaking_mid_images = self._images_from_folder(root / "talk_mid") or self._images_from_folder(root / "fala_media")
+        self.speaking_high_images = self._images_from_folder(root / "talk_high") or self._images_from_folder(root / "fala_alta")
+
+        if not self.idle_images and not self.speaking_images:
+            messagebox.showinfo("Pasta sem avatar", "Use subpastas idle e talk, ou idle e fala.")
+            return
+
+        self._save_image_sets()
+
+    def _images_from_folder(self, folder: Path) -> list[str]:
+        if not folder.is_dir():
+            return []
+        allowed = {".png", ".gif"}
+        return [str(path) for path in sorted(folder.iterdir()) if path.suffix.lower() in allowed and path.is_file()]
+
     def _clear_images(self) -> None:
         self.idle_images = []
         self.speaking_images = []
+        self.speaking_low_images = []
+        self.speaking_mid_images = []
+        self.speaking_high_images = []
         self._save_image_sets()
 
     def _pick_images(self, title: str) -> list[str]:
@@ -246,17 +359,93 @@ class AvatarCamApp(tk.Tk):
     def _save_image_sets(self) -> None:
         self.settings.idle_images = self.idle_images
         self.settings.speaking_images = self.speaking_images
-        self.avatar_canvas.set_image_sets(self.idle_images, self.speaking_images)
+        self.settings.speaking_low_images = self.speaking_low_images
+        self.settings.speaking_mid_images = self.speaking_mid_images
+        self.settings.speaking_high_images = self.speaking_high_images
+        self.avatar_canvas.set_image_sets(
+            self.idle_images,
+            self.speaking_images,
+            self.speaking_low_images,
+            self.speaking_mid_images,
+            self.speaking_high_images,
+        )
         if self.obs_window and self.obs_window.winfo_exists():
-            self.obs_window.set_image_sets(self.idle_images, self.speaking_images)
+            self.obs_window.set_image_sets(
+                self.idle_images,
+                self.speaking_images,
+                self.speaking_low_images,
+                self.speaking_mid_images,
+                self.speaking_high_images,
+            )
         self.avatar_label.configure(text=self._image_summary())
         self.settings.save()
 
     def _image_summary(self) -> str:
-        return f"Idle: {len(self.idle_images)} imagem(ns) | Fala: {len(self.speaking_images)} imagem(ns)"
+        level_count = len(self.speaking_low_images) + len(self.speaking_mid_images) + len(self.speaking_high_images)
+        return f"Idle: {len(self.idle_images)} | Fala: {len(self.speaking_images)} | Niveis: {level_count}"
+
+    def _save_profile(self) -> None:
+        name = self.profile_var.get() or "Default"
+        profiles = self.settings.profiles or {}
+        profiles[name] = {
+            "idle_images": self.idle_images,
+            "speaking_images": self.speaking_images,
+            "speaking_low_images": self.speaking_low_images,
+            "speaking_mid_images": self.speaking_mid_images,
+            "speaking_high_images": self.speaking_high_images,
+            "sensitivity": float(self.sensitivity_var.get()),
+            "smoothing": float(self.smoothing_var.get()),
+            "animation_fps": int(float(self.animation_fps_var.get())),
+            "obs_background": self.obs_background_var.get(),
+            "obs_resolution": self.obs_resolution_var.get(),
+        }
+        self.settings.profiles = profiles
+        self.settings.active_profile = name
+        self.profile_select.configure(values=self._profile_names())
+        self.settings.save()
+        self.status_label.configure(text=f"Perfil salvo: {name}")
+
+    def _new_profile(self) -> None:
+        name = simpledialog.askstring("Novo perfil", "Nome do perfil:")
+        if not name:
+            return
+        self.profile_var.set(name)
+        self._save_profile()
+
+    def _load_profile(self, name: str) -> None:
+        profile = (self.settings.profiles or {}).get(name)
+        if not profile:
+            return
+        self.idle_images = list(profile.get("idle_images") or [])
+        self.speaking_images = list(profile.get("speaking_images") or [])
+        self.speaking_low_images = list(profile.get("speaking_low_images") or [])
+        self.speaking_mid_images = list(profile.get("speaking_mid_images") or [])
+        self.speaking_high_images = list(profile.get("speaking_high_images") or [])
+        self.sensitivity_var.set(float(profile.get("sensitivity", self.settings.sensitivity)))
+        self.smoothing_var.set(float(profile.get("smoothing", self.settings.smoothing)))
+        self.animation_fps_var.set(int(profile.get("animation_fps", self.settings.animation_fps)))
+        self.obs_background_var.set(profile.get("obs_background", self.settings.obs_background))
+        self.obs_resolution_var.set(profile.get("obs_resolution", self.settings.obs_resolution))
+        self.settings.active_profile = name
+        self._save_settings()
+        self._save_obs_settings()
+        self._save_image_sets()
+        self.status_label.configure(text=f"Perfil carregado: {name}")
 
     def _trigger_test(self) -> None:
         self.test_ticks = 90
+
+    def _start_calibration(self) -> None:
+        if not self.microphone.is_running:
+            try:
+                self.microphone.start()
+                self.mic_button.configure(text="Desativar microfone")
+            except Exception as exc:
+                messagebox.showerror("Calibracao", f"Ative o microfone primeiro:\n{exc}")
+                return
+        self.calibration_samples = []
+        self.calibration_ticks = 180
+        self.status_label.configure(text="Calibrando ruido por 3 segundos...")
 
     def _toggle_theme(self) -> None:
         self.dark_var.set(not self.dark_var.get())
@@ -292,9 +481,14 @@ class AvatarCamApp(tk.Tk):
                 self,
                 self.idle_images,
                 self.speaking_images,
+                self.speaking_low_images,
+                self.speaking_mid_images,
+                self.speaking_high_images,
                 self.settings.obs_background,
                 self.settings.obs_always_on_top,
                 self.settings.animation_fps,
+                self.settings.obs_resolution,
+                self.settings.obs_borderless,
             )
         else:
             self.obs_window.deiconify()
@@ -308,10 +502,14 @@ class AvatarCamApp(tk.Tk):
         self.settings.obs_background = self.obs_background_var.get()
         self.settings.obs_always_on_top = self.obs_top_var.get()
         self.settings.auto_hide_controls = self.auto_hide_var.get()
+        self.settings.obs_resolution = self.obs_resolution_var.get()
+        self.settings.obs_borderless = self.obs_borderless_var.get()
 
         if self.obs_window and self.obs_window.winfo_exists():
             self.obs_window.set_background(self.settings.obs_background)
             self.obs_window.set_always_on_top(self.settings.obs_always_on_top)
+            self.obs_window.set_resolution(self.settings.obs_resolution)
+            self.obs_window.set_borderless(self.settings.obs_borderless)
 
         self.settings.save()
 
@@ -333,6 +531,16 @@ class AvatarCamApp(tk.Tk):
             raw_level = self.microphone.read_level()
 
         state = self.detector.update(raw_level)
+        if self.calibration_ticks > 0:
+            self.calibration_samples.append(raw_level)
+            self.calibration_ticks -= 1
+            if self.calibration_ticks == 0:
+                base = max(self.calibration_samples or [0.02])
+                calibrated = max(0.05, min(0.45, base * 2.7 + 0.035))
+                self.sensitivity_var.set(calibrated)
+                self._save_settings()
+                self.status_label.configure(text=f"Sensibilidade calibrada: {int(calibrated * 100)}%")
+
         speaking = state.speaking or self.test_ticks > 0
         self.avatar_canvas.update_state(speaking, state.level)
         if self.obs_window and self.obs_window.winfo_exists() and self.obs_window.state() != "withdrawn":
@@ -343,14 +551,25 @@ class AvatarCamApp(tk.Tk):
         self.volume_label.configure(text=f"{percent}%")
 
         if self.microphone.is_running:
-            self.status_label.configure(text="Voz detectada" if speaking else "Ouvindo microfone")
+            if self.calibration_ticks <= 0:
+                self.status_label.configure(text="Voz detectada" if speaking else f"Ouvindo microfone | FPS {self.render_fps}")
         elif self.test_ticks > 0:
             self.status_label.configure(text="Teste de fala ativo")
         else:
             self.status_label.configure(text="Microfone desligado")
 
+        self.render_frames += 1
+        now = int(self.tk.call("clock", "milliseconds"))
+        if self.last_fps_time == 0:
+            self.last_fps_time = now
+        elif now - self.last_fps_time >= 1000:
+            self.render_fps = self.render_frames
+            self.render_frames = 0
+            self.last_fps_time = now
+
         self.after(16, self._tick)
 
     def destroy(self) -> None:
+        self.hotkeys.close()
         self.microphone.stop()
         super().destroy()

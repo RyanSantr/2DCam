@@ -18,8 +18,15 @@ class Settings:
     obs_always_on_top: bool = False
     idle_images: list[str] | None = None
     speaking_images: list[str] | None = None
+    speaking_low_images: list[str] | None = None
+    speaking_mid_images: list[str] | None = None
+    speaking_high_images: list[str] | None = None
     animation_fps: int = 12
     auto_hide_controls: bool = False
+    active_profile: str = "Default"
+    profiles: dict | None = None
+    obs_resolution: str = "1280x720"
+    obs_borderless: bool = False
 
     @classmethod
     def load(cls) -> "Settings":

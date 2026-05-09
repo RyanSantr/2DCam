@@ -14,12 +14,19 @@ Aplicacao desktop em Python onde sua camera e substituida por um avatar 2D anima
 - Barra de volume em tempo real.
 - Sensibilidade e suavizacao ajustaveis.
 - FPS da animacao ajustavel.
+- Perfis de avatar para lives diferentes.
+- Importacao automatica por pasta.
+- Estados de fala baixa, media e alta por volume.
+- Calibracao automatica do ruido ambiente.
+- Hotkeys: `F8`, `F9`, `F10`, `F11`.
 - Modo escuro/claro.
 - Fundo personalizavel.
 - Botao de teste de fala.
 - Janela limpa para OBS em 1280x720.
 - Fundo chroma key para remover no OBS.
 - Opcao para manter a janela OBS sempre no topo.
+- Janela OBS com resolucoes 16:9 e vertical.
+- Opcao de janela OBS sem borda.
 - Modo live para esconder controles e deixar so a janela de captura.
 - Processamento local: sem upload de audio, imagem ou configuracao.
 - Estrutura separada por modulos.
@@ -37,6 +44,7 @@ Aplicacao desktop em Python onde sua camera e substituida por um avatar 2D anima
 |   |-- audio
 |   |   |-- microphone.py
 |   |-- core
+|   |   |-- hotkeys.py
 |   |   |-- settings.py
 |   |   |-- speech_detector.py
 |   |-- ui
@@ -90,12 +98,41 @@ dist\AvatarCam2D.exe
 6. Ajuste **Sensibilidade** se ele falar sozinho ou demorar para reagir.
 7. Use **Teste de fala** para testar a animacao sem microfone.
 
+## Pasta De Avatar Recomendada
+
+Voce pode importar uma pasta inteira com este formato:
+
+```text
+meu-avatar/
+|-- idle/
+|   |-- 001.png
+|   |-- 002.png
+|-- talk/
+|   |-- 001.png
+|-- talk_low/
+|   |-- 001.png
+|-- talk_mid/
+|   |-- 001.png
+|-- talk_high/
+    |-- 001.png
+```
+
+Pastas em portugues tambem funcionam para fala:
+
+```text
+fala/
+fala_baixa/
+fala_media/
+fala_alta/
+```
+
 ## Usar Suas Proprias Artes
 
 O app nao depende mais de avatar pronto. Voce escolhe arquivos locais para cada estado:
 
 - **Idle:** imagem parada ou sequencia de frames quando voce nao esta falando.
 - **Falando:** imagem de boca aberta ou sequencia de frames quando sua voz e detectada.
+- **Fala baixa/media/alta:** imagens opcionais para variar a boca conforme o volume.
 
 Formatos recomendados:
 
@@ -104,6 +141,19 @@ Formatos recomendados:
 - Imagens na mesma proporcao para evitar pulos visuais.
 
 Tudo fica local no seu PC. O app nao envia audio nem imagens para internet.
+
+## Atalhos
+
+- `F8`: ativar/desativar microfone.
+- `F9`: teste de fala.
+- `F10`: mostrar controles.
+- `F11`: abrir/ocultar janela OBS.
+
+Quando possivel no Windows, o app registra esses atalhos como globais. Se o Windows bloquear, eles continuam funcionando quando a janela do app estiver focada.
+
+## Calibracao
+
+Use **Calibrar ruido ambiente** antes da live. Fique em silencio por 3 segundos. O app mede o ruido do seu quarto, teclado e ventoinhas, depois ajusta a sensibilidade automaticamente.
 
 ## Usar Com OBS
 
@@ -116,6 +166,6 @@ Tudo fica local no seu PC. O app nao envia audio nem imagens para internet.
 6. Para remover o fundo, adicione o filtro **Chroma Key** na fonte.
 7. Use a cor do fundo selecionado no app, por exemplo `chroma_green`.
 
-O app principal fica para controles e configuracoes. A janela **OBS Avatar Output** fica limpa, sem botoes, em formato 16:9, pronta para transmissao. Use **Modo live: ocultar controles** para esconder o painel durante jogos. Para restaurar os controles, foque a janela **OBS Avatar Output** e aperte `F10`.
+O app principal fica para controles e configuracoes. A janela **OBS Avatar Output** fica limpa, sem botoes, pronta para transmissao. Use **Modo live: ocultar controles** para esconder o painel durante jogos. Para restaurar os controles, foque a janela **OBS Avatar Output** e aperte `F10`.
 
 Para uma camera virtual real, ative a **OBS Virtual Camera** depois de compor a cena no OBS. Assim Discord, Zoom e outros apps podem receber a cena como camera.

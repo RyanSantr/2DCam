@@ -15,9 +15,9 @@ class AvatarCanvas(tk.Canvas):
         super().__init__(master, highlightthickness=0, **kwargs)
         self.avatar = {}
         self.idle_paths: list[str] = []
-        self.speaking_paths: list[str] = []
+        self.speaking_paths: dict[str, list[str]] = {"low": [], "mid": [], "high": []}
         self.idle_frames: list[tk.PhotoImage] = []
-        self.speaking_frames: list[tk.PhotoImage] = []
+        self.speaking_frames: dict[str, list[tk.PhotoImage]] = {"low": [], "mid": [], "high": []}
         self._fit_cache: dict[tuple[str, int, int, int], tk.PhotoImage] = {}
         self.animation_fps = 12
         self.speaking = False
@@ -30,11 +30,25 @@ class AvatarCanvas(tk.Canvas):
         self.avatar = avatar
         self.draw()
 
-    def set_image_sets(self, idle_paths: list[str], speaking_paths: list[str]) -> None:
+    def set_image_sets(
+        self,
+        idle_paths: list[str],
+        speaking_paths: list[str],
+        low_paths: list[str] | None = None,
+        mid_paths: list[str] | None = None,
+        high_paths: list[str] | None = None,
+    ) -> None:
         self.idle_paths = idle_paths
-        self.speaking_paths = speaking_paths
+        self.speaking_paths = {
+            "low": low_paths or speaking_paths,
+            "mid": mid_paths or speaking_paths,
+            "high": high_paths or speaking_paths,
+        }
         self.idle_frames = self._load_images(idle_paths)
-        self.speaking_frames = self._load_images(speaking_paths)
+        self.speaking_frames = {
+            name: self._load_images(paths)
+            for name, paths in self.speaking_paths.items()
+        }
         self._fit_cache.clear()
         self.draw()
 
@@ -97,7 +111,7 @@ class AvatarCanvas(tk.Canvas):
         return frames
 
     def _draw_custom_image(self, cx: float, cy: float) -> bool:
-        frames = self.speaking_frames if self.speaking and self.speaking_frames else self.idle_frames
+        frames = self._current_frames()
         if not frames:
             return False
 
@@ -107,6 +121,16 @@ class AvatarCanvas(tk.Canvas):
         self.create_image(cx, cy, image=image, anchor=tk.CENTER)
         self._last_drawn_image = image
         return True
+
+    def _current_frames(self) -> list[tk.PhotoImage]:
+        if not self.speaking:
+            return self.idle_frames
+
+        if self.level >= 0.45:
+            return self.speaking_frames["high"] or self.speaking_frames["mid"] or self.speaking_frames["low"] or self.idle_frames
+        if self.level >= 0.22:
+            return self.speaking_frames["mid"] or self.speaking_frames["low"] or self.idle_frames
+        return self.speaking_frames["low"] or self.idle_frames
 
     def _fit_image(self, image: tk.PhotoImage) -> tk.PhotoImage:
         w = max(1, self.winfo_width())
