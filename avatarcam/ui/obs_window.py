@@ -8,7 +8,15 @@ from avatarcam.ui.avatar_canvas import AvatarCanvas
 class ObsOutputWindow(tk.Toplevel):
     """Janela limpa para captura no OBS via Window Capture."""
 
-    def __init__(self, master: tk.Misc, avatar: dict, background: str, always_on_top: bool) -> None:
+    def __init__(
+        self,
+        master: tk.Misc,
+        idle_images: list[str],
+        speaking_images: list[str],
+        background: str,
+        always_on_top: bool,
+        animation_fps: int,
+    ) -> None:
         super().__init__(master)
         self.title("OBS Avatar Output")
         self.geometry("1280x720")
@@ -18,12 +26,18 @@ class ObsOutputWindow(tk.Toplevel):
 
         self.canvas = AvatarCanvas(self)
         self.canvas.pack(fill=tk.BOTH, expand=True)
-        self.canvas.set_avatar(avatar)
+        self.canvas.set_image_sets(idle_images, speaking_images)
+        self.canvas.set_animation_fps(animation_fps)
         self.canvas.set_background(background)
         self.set_always_on_top(always_on_top)
 
-    def set_avatar(self, avatar: dict) -> None:
-        self.canvas.set_avatar(avatar)
+        self.bind("<F10>", lambda _event: master.show_controls())
+
+    def set_image_sets(self, idle_images: list[str], speaking_images: list[str]) -> None:
+        self.canvas.set_image_sets(idle_images, speaking_images)
+
+    def set_animation_fps(self, fps: int) -> None:
+        self.canvas.set_animation_fps(fps)
 
     def set_background(self, background: str) -> None:
         self.canvas.set_background(background)

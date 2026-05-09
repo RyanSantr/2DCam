@@ -5,20 +5,23 @@ Aplicacao desktop em Python onde sua camera e substituida por um avatar 2D anima
 ## O Que Vem Pronto
 
 - Janela desktop nativa, sem navegador e sem servidor web.
-- Avatar 2D desenhado em Canvas.
+- Avatar 2D carregado a partir de imagens escolhidas pelo usuario.
 - Captura de microfone com `sounddevice`.
-- Deteccao de fala por volume RMS.
+- Deteccao de fala por volume RMS com baixa latencia.
 - Troca automatica entre idle e fala.
 - Botao para ativar/desativar microfone.
-- Botao para trocar avatar.
+- Botoes para escolher imagens idle e imagens falando.
 - Barra de volume em tempo real.
 - Sensibilidade e suavizacao ajustaveis.
+- FPS da animacao ajustavel.
 - Modo escuro/claro.
 - Fundo personalizavel.
 - Botao de teste de fala.
 - Janela limpa para OBS em 1280x720.
 - Fundo chroma key para remover no OBS.
 - Opcao para manter a janela OBS sempre no topo.
+- Modo live para esconder controles e deixar so a janela de captura.
+- Processamento local: sem upload de audio, imagem ou configuracao.
 - Estrutura separada por modulos.
 - Script para gerar `.exe` no Windows.
 
@@ -31,8 +34,6 @@ Aplicacao desktop em Python onde sua camera e substituida por um avatar 2D anima
 |-- README.md
 |-- avatarcam
 |   |-- main.py
-|   |-- assets
-|   |   |-- avatars.py
 |   |-- audio
 |   |   |-- microphone.py
 |   |-- core
@@ -84,30 +85,37 @@ dist\AvatarCam2D.exe
 1. Abra o app.
 2. Clique em **Ativar microfone**.
 3. Fale no microfone.
-4. O avatar abre a boca e anima enquanto sua voz e detectada.
+4. O app alterna para as imagens de fala enquanto sua voz e detectada.
 5. Ao parar de falar, ele volta para idle.
 6. Ajuste **Sensibilidade** se ele falar sozinho ou demorar para reagir.
 7. Use **Teste de fala** para testar a animacao sem microfone.
 
-## Trocar Por Suas Proprias Artes
+## Usar Suas Proprias Artes
 
-Hoje o avatar e desenhado em `avatarcam/ui/avatar_canvas.py`. Para usar artes 2D proprias no futuro, existem dois caminhos:
+O app nao depende mais de avatar pronto. Voce escolhe arquivos locais para cada estado:
 
-- Substituir o desenho do Canvas por imagens PNG usando `PhotoImage`.
-- Criar sprites separados para idle/fala e trocar os frames dentro de `AvatarCanvas.update_state`.
+- **Idle:** imagem parada ou sequencia de frames quando voce nao esta falando.
+- **Falando:** imagem de boca aberta ou sequencia de frames quando sua voz e detectada.
 
-A logica de audio e fala ja esta separada, entao voce nao precisa mexer em `avatarcam/audio` nem em `avatarcam/core`.
+Formatos recomendados:
+
+- PNG com transparencia para melhor resultado no OBS.
+- GIF ou varios PNGs para animacao simples.
+- Imagens na mesma proporcao para evitar pulos visuais.
+
+Tudo fica local no seu PC. O app nao envia audio nem imagens para internet.
 
 ## Usar Com OBS
 
 1. Abra o `AvatarCam2D.exe`.
-2. Clique em **Abrir janela OBS**.
+2. Escolha as imagens idle e falando.
+3. Clique em **Abrir janela OBS**.
 3. No OBS, adicione uma fonte **Window Capture**.
 4. Escolha a janela chamada **OBS Avatar Output**.
 5. Selecione o metodo de captura que funcionar melhor no seu Windows, geralmente **Windows 10 (1903 and up)**.
 6. Para remover o fundo, adicione o filtro **Chroma Key** na fonte.
 7. Use a cor do fundo selecionado no app, por exemplo `chroma_green`.
 
-O app principal fica para controles e configuracoes. A janela **OBS Avatar Output** fica limpa, sem botoes, em formato 16:9, pronta para transmissao.
+O app principal fica para controles e configuracoes. A janela **OBS Avatar Output** fica limpa, sem botoes, em formato 16:9, pronta para transmissao. Use **Modo live: ocultar controles** para esconder o painel durante jogos. Para restaurar os controles, foque a janela **OBS Avatar Output** e aperte `F10`.
 
 Para uma camera virtual real, ative a **OBS Virtual Camera** depois de compor a cena no OBS. Assim Discord, Zoom e outros apps podem receber a cena como camera.

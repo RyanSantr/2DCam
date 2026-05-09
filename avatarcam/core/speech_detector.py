@@ -39,9 +39,9 @@ class SpeechDetector:
             self.silence_frames += 1
             self.voice_frames = 0
 
-        if not self.speaking and self.voice_frames >= 2:
+        if not self.speaking and self.voice_frames >= 1:
             self.speaking = True
-        elif self.speaking and self.silence_frames >= 12:
+        elif self.speaking and self.silence_frames >= 7:
             self.speaking = False
 
         return SpeechState(level=self.smoothed_level, speaking=self.speaking)

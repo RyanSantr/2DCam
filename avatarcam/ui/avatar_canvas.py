@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from pathlib import Path
 import tkinter as tk
 from typing import Any
 
@@ -13,15 +14,32 @@ class AvatarCanvas(tk.Canvas):
     def __init__(self, master: tk.Misc, **kwargs: Any) -> None:
         super().__init__(master, highlightthickness=0, **kwargs)
         self.avatar = {}
+        self.idle_paths: list[str] = []
+        self.speaking_paths: list[str] = []
+        self.idle_frames: list[tk.PhotoImage] = []
+        self.speaking_frames: list[tk.PhotoImage] = []
+        self._fit_cache: dict[tuple[str, int, int, int], tk.PhotoImage] = {}
+        self.animation_fps = 12
         self.speaking = False
         self.level = 0.0
         self.frame = 0
         self.background = "studio"
-        self.bind("<Configure>", lambda _event: self.draw())
+        self.bind("<Configure>", self._handle_resize)
 
     def set_avatar(self, avatar: dict) -> None:
         self.avatar = avatar
         self.draw()
+
+    def set_image_sets(self, idle_paths: list[str], speaking_paths: list[str]) -> None:
+        self.idle_paths = idle_paths
+        self.speaking_paths = speaking_paths
+        self.idle_frames = self._load_images(idle_paths)
+        self.speaking_frames = self._load_images(speaking_paths)
+        self._fit_cache.clear()
+        self.draw()
+
+    def set_animation_fps(self, fps: int) -> None:
+        self.animation_fps = max(1, min(30, fps))
 
     def set_background(self, background: str) -> None:
         self.background = background
@@ -31,6 +49,10 @@ class AvatarCanvas(tk.Canvas):
         self.speaking = speaking
         self.level = level
         self.frame += 1
+        self.draw()
+
+    def _handle_resize(self, _event: tk.Event) -> None:
+        self._fit_cache.clear()
         self.draw()
 
     def draw(self) -> None:
@@ -44,7 +66,10 @@ class AvatarCanvas(tk.Canvas):
         cy = h * 0.55 + idle_bob - talk_bounce
 
         self._draw_background(w, h)
-        self._draw_avatar(cx, cy, scale)
+        if self._draw_custom_image(cx, cy):
+            return
+
+        self._draw_empty_state(cx, cy, scale)
 
     def _draw_background(self, w: int, h: int) -> None:
         top, bottom = BACKGROUNDS.get(self.background, BACKGROUNDS["studio"])
@@ -61,52 +86,56 @@ class AvatarCanvas(tk.Canvas):
             for y in range(0, h, 42):
                 self.create_line(0, y, w, y, fill="#2b3a50", width=1)
 
-    def _draw_avatar(self, cx: float, cy: float, scale: float) -> None:
-        skin = self.avatar.get("skin", "#f7c7a5")
-        hair = self.avatar.get("hair", "#35253e")
-        shirt = self.avatar.get("shirt", "#2f7dd1")
-        accent = self.avatar.get("accent", "#53e0c2")
-        eye = self.avatar.get("eye", "#171923")
+    def _load_images(self, paths: list[str]) -> list[tk.PhotoImage]:
+        frames: list[tk.PhotoImage] = []
+        for path in paths:
+            try:
+                if Path(path).is_file():
+                    frames.append(tk.PhotoImage(file=path))
+            except tk.TclError:
+                continue
+        return frames
 
+    def _draw_custom_image(self, cx: float, cy: float) -> bool:
+        frames = self.speaking_frames if self.speaking and self.speaking_frames else self.idle_frames
+        if not frames:
+            return False
+
+        step = max(1, int(60 / self.animation_fps))
+        image = frames[(self.frame // step) % len(frames)]
+        image = self._fit_image(image)
+        self.create_image(cx, cy, image=image, anchor=tk.CENTER)
+        self._last_drawn_image = image
+        return True
+
+    def _fit_image(self, image: tk.PhotoImage) -> tk.PhotoImage:
+        w = max(1, self.winfo_width())
+        h = max(1, self.winfo_height())
+        max_w = max(1, int(w * 0.86))
+        max_h = max(1, int(h * 0.86))
+        iw = max(1, image.width())
+        ih = max(1, image.height())
+
+        if iw <= max_w and ih <= max_h:
+            return image
+
+        factor = max(1, math.ceil(max(iw / max_w, ih / max_h)))
+        key = (str(image), factor, max_w, max_h)
+        if key not in self._fit_cache:
+            self._fit_cache[key] = image.subsample(factor, factor)
+        return self._fit_cache[key]
+
+    def _draw_empty_state(self, cx: float, cy: float, scale: float) -> None:
         def p(value: float) -> float:
             return value * scale
 
-        # Corpo e pescoco.
-        self.create_oval(cx - p(118), cy + p(86), cx + p(118), cy + p(250), fill=shirt, outline="")
-        self.create_rectangle(cx - p(34), cy + p(54), cx + p(34), cy + p(124), fill=skin, outline="")
-        self.create_oval(cx - p(38), cy + p(92), cx + p(38), cy + p(142), fill=skin, outline="")
-
-        # Cabeca, cabelo e orelhas.
-        self.create_oval(cx - p(110), cy - p(138), cx + p(110), cy + p(92), fill=skin, outline="")
-        self.create_oval(cx - p(124), cy - p(22), cx - p(94), cy + p(34), fill=skin, outline="")
-        self.create_oval(cx + p(94), cy - p(22), cx + p(124), cy + p(34), fill=skin, outline="")
-        self.create_arc(cx - p(116), cy - p(150), cx + p(116), cy + p(18), start=0, extent=180, fill=hair, outline=hair)
-        self.create_polygon(
-            cx - p(105), cy - p(48),
-            cx - p(58), cy - p(132),
-            cx - p(8), cy - p(48),
-            cx + p(42), cy - p(132),
-            cx + p(102), cy - p(42),
-            fill=hair,
-            outline="",
+        self.create_oval(cx - p(92), cy - p(92), cx + p(92), cy + p(92), fill="#243047", outline="#60708f", width=max(2, int(p(3))))
+        self.create_line(cx - p(38), cy - p(16), cx + p(38), cy - p(16), fill="#9fb0cf", width=max(2, int(p(5))))
+        self.create_line(cx, cy - p(54), cx, cy + p(22), fill="#9fb0cf", width=max(2, int(p(5))))
+        self.create_text(
+            cx,
+            cy + p(135),
+            text="Selecione imagens de idle e fala",
+            fill="#ffffff",
+            font=("Segoe UI", max(10, int(p(13))), "bold"),
         )
-
-        # Olhos e sobrancelhas.
-        blink = abs(math.sin(self.frame / 70)) > 0.985
-        eye_h = p(3 if blink else 22)
-        self.create_oval(cx - p(58), cy - p(32), cx - p(24), cy - p(32) + eye_h, fill=eye, outline="")
-        self.create_oval(cx + p(24), cy - p(32), cx + p(58), cy - p(32) + eye_h, fill=eye, outline="")
-        self.create_line(cx - p(66), cy - p(52), cx - p(22), cy - p(58), fill=hair, width=max(2, int(p(4))))
-        self.create_line(cx + p(22), cy - p(58), cx + p(66), cy - p(52), fill=hair, width=max(2, int(p(4))))
-
-        # Boca muda de forma conforme fala e volume.
-        if self.speaking:
-            mouth_h = p(12 + min(1.0, self.level * 3.8) * 42)
-            self.create_oval(cx - p(34), cy + p(26), cx + p(34), cy + p(26) + mouth_h, fill="#5b1b26", outline="")
-            self.create_arc(cx - p(26), cy + p(34), cx + p(26), cy + p(60) + mouth_h, start=180, extent=180, fill="#ff8aa2", outline="")
-        else:
-            self.create_arc(cx - p(34), cy + p(20), cx + p(34), cy + p(58), start=200, extent=140, style=tk.ARC, outline="#8f4d48", width=max(2, int(p(4))))
-
-        # Acessorio simples para dar identidade ao avatar.
-        self.create_oval(cx + p(72), cy - p(112), cx + p(118), cy - p(66), fill=accent, outline="")
-        self.create_text(cx + p(95), cy - p(90), text="*", fill="#ffffff", font=("Segoe UI", max(10, int(p(18))), "bold"))

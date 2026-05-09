@@ -9,11 +9,11 @@ from typing import Optional
 class MicrophoneInput:
     """Captura audio do microfone e entrega volume RMS normalizado."""
 
-    def __init__(self, samplerate: int = 44100, blocksize: int = 1024) -> None:
+    def __init__(self, samplerate: int = 44100, blocksize: int = 512) -> None:
         self.samplerate = samplerate
         self.blocksize = blocksize
         self._stream = None
-        self._levels: queue.Queue[float] = queue.Queue(maxsize=8)
+        self._levels: queue.Queue[float] = queue.Queue(maxsize=3)
         self._sounddevice = None
 
     @property

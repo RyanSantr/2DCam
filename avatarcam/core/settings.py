@@ -9,13 +9,17 @@ SETTINGS_FILE = APP_DIR / "settings.json"
 
 @dataclass
 class Settings:
-    sensitivity: float = 0.16
-    smoothing: float = 0.72
+    sensitivity: float = 0.10
+    smoothing: float = 0.38
     dark_mode: bool = True
     background: str = "studio"
     avatar_index: int = 0
     obs_background: str = "chroma_green"
-    obs_always_on_top: bool = True
+    obs_always_on_top: bool = False
+    idle_images: list[str] | None = None
+    speaking_images: list[str] | None = None
+    animation_fps: int = 12
+    auto_hide_controls: bool = False
 
     @classmethod
     def load(cls) -> "Settings":

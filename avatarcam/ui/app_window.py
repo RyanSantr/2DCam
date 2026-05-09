@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import math
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import filedialog, messagebox, ttk
 
-from avatarcam.assets.avatars import AVATARS
 from avatarcam.audio.microphone import MicrophoneInput
 from avatarcam.core.settings import Settings
 from avatarcam.core.speech_detector import SpeechDetector
@@ -17,16 +16,17 @@ class AvatarCamApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.title("AvatarCam 2D")
-        self.geometry("1120x720")
-        self.minsize(900, 620)
+        self.geometry("1180x820")
+        self.minsize(980, 760)
 
         self.settings = Settings.load()
         self.colors = DARK if self.settings.dark_mode else LIGHT
         self.microphone = MicrophoneInput()
         self.detector = SpeechDetector(self.settings.sensitivity, self.settings.smoothing)
         self.test_ticks = 0
-        self.avatar_index = min(self.settings.avatar_index, len(AVATARS) - 1)
         self.obs_window: ObsOutputWindow | None = None
+        self.idle_images = list(self.settings.idle_images or [])
+        self.speaking_images = list(self.settings.speaking_images or [])
 
         self._configure_style()
         self._build_layout()
@@ -59,7 +59,8 @@ class AvatarCamApp(tk.Tk):
 
         self.avatar_canvas = AvatarCanvas(self.stage_frame)
         self.avatar_canvas.grid(row=1, column=0, sticky="nsew")
-        self.avatar_canvas.set_avatar(AVATARS[self.avatar_index])
+        self.avatar_canvas.set_image_sets(self.idle_images, self.speaking_images)
+        self.avatar_canvas.set_animation_fps(self.settings.animation_fps)
         self.avatar_canvas.set_background(self.settings.background)
 
         meter_box = ttk.Frame(self.stage_frame)
@@ -80,13 +81,19 @@ class AvatarCamApp(tk.Tk):
 
         self.mic_button = ttk.Button(self.control_frame, text="Ativar microfone", command=self._toggle_microphone, style="Primary.TButton")
         self.mic_button.grid(row=2, column=0, sticky="ew", pady=5)
-        self.avatar_button = ttk.Button(self.control_frame, text="Trocar avatar", command=self._next_avatar)
-        self.avatar_button.grid(row=3, column=0, sticky="ew", pady=5)
+
+        self.idle_button = ttk.Button(self.control_frame, text="Escolher imagens idle", command=self._choose_idle_images)
+        self.idle_button.grid(row=3, column=0, sticky="ew", pady=5)
+        self.speaking_button = ttk.Button(self.control_frame, text="Escolher imagens falando", command=self._choose_speaking_images)
+        self.speaking_button.grid(row=4, column=0, sticky="ew", pady=5)
+        self.clear_images_button = ttk.Button(self.control_frame, text="Limpar imagens", command=self._clear_images)
+        self.clear_images_button.grid(row=5, column=0, sticky="ew", pady=5)
+
         self.test_button = ttk.Button(self.control_frame, text="Teste de fala", command=self._trigger_test)
-        self.test_button.grid(row=4, column=0, sticky="ew", pady=5)
+        self.test_button.grid(row=6, column=0, sticky="ew", pady=5)
 
         self.settings_frame = ttk.LabelFrame(self.control_frame, text="Configuracoes", padding=14)
-        self.settings_frame.grid(row=5, column=0, sticky="ew", pady=(18, 10))
+        self.settings_frame.grid(row=7, column=0, sticky="ew", pady=(18, 10))
         self.settings_frame.columnconfigure(0, weight=1)
 
         self.sensitivity_var = tk.DoubleVar(value=self.settings.sensitivity)
@@ -95,25 +102,28 @@ class AvatarCamApp(tk.Tk):
         self.background_var = tk.StringVar(value=self.settings.background)
         self.obs_background_var = tk.StringVar(value=self.settings.obs_background)
         self.obs_top_var = tk.BooleanVar(value=self.settings.obs_always_on_top)
+        self.auto_hide_var = tk.BooleanVar(value=self.settings.auto_hide_controls)
+        self.animation_fps_var = tk.IntVar(value=self.settings.animation_fps)
 
         self._add_slider("Sensibilidade", self.sensitivity_var, 0.04, 0.7, 0)
         self._add_slider("Suavizacao", self.smoothing_var, 0.1, 0.95, 1)
+        self._add_slider("FPS da animacao", self.animation_fps_var, 1, 30, 2)
 
-        ttk.Label(self.settings_frame, text="Fundo", style="Body.TLabel").grid(row=4, column=0, sticky="w", pady=(12, 4))
+        ttk.Label(self.settings_frame, text="Fundo preview", style="Body.TLabel").grid(row=6, column=0, sticky="w", pady=(12, 4))
         self.background_select = ttk.Combobox(
             self.settings_frame,
             textvariable=self.background_var,
             values=("studio", "aurora", "grid", "clean"),
             state="readonly",
         )
-        self.background_select.grid(row=5, column=0, sticky="ew")
+        self.background_select.grid(row=7, column=0, sticky="ew")
         self.background_select.bind("<<ComboboxSelected>>", lambda _event: self._save_settings())
 
         self.dark_check = ttk.Checkbutton(self.settings_frame, text="Modo escuro", variable=self.dark_var, command=self._toggle_theme_from_check)
-        self.dark_check.grid(row=6, column=0, sticky="w", pady=(14, 0))
+        self.dark_check.grid(row=8, column=0, sticky="w", pady=(14, 0))
 
         self.obs_frame = ttk.LabelFrame(self.control_frame, text="OBS", padding=14)
-        self.obs_frame.grid(row=6, column=0, sticky="ew", pady=(10, 10))
+        self.obs_frame.grid(row=8, column=0, sticky="ew", pady=(10, 10))
         self.obs_frame.columnconfigure(0, weight=1)
 
         self.obs_button = ttk.Button(self.obs_frame, text="Abrir janela OBS", command=self._toggle_obs_window, style="Primary.TButton")
@@ -137,10 +147,21 @@ class AvatarCamApp(tk.Tk):
         )
         self.obs_top_check.grid(row=3, column=0, sticky="w", pady=(10, 0))
 
+        self.auto_hide_check = ttk.Checkbutton(
+            self.obs_frame,
+            text="Esconder controles ao abrir OBS",
+            variable=self.auto_hide_var,
+            command=self._save_obs_settings,
+        )
+        self.auto_hide_check.grid(row=4, column=0, sticky="w", pady=(8, 0))
+
+        self.hide_button = ttk.Button(self.obs_frame, text="Modo live: ocultar controles", command=self._hide_controls)
+        self.hide_button.grid(row=5, column=0, sticky="ew", pady=(10, 0))
+
         self.status_label = ttk.Label(self.control_frame, text="Microfone desligado", style="Status.TLabel")
-        self.status_label.grid(row=7, column=0, sticky="ew", pady=(10, 0))
-        self.avatar_label = ttk.Label(self.control_frame, text=f"Avatar: {AVATARS[self.avatar_index]['name']}", style="Body.TLabel")
-        self.avatar_label.grid(row=8, column=0, sticky="w", pady=(8, 0))
+        self.status_label.grid(row=9, column=0, sticky="ew", pady=(10, 0))
+        self.avatar_label = ttk.Label(self.control_frame, text=self._image_summary(), style="Body.TLabel")
+        self.avatar_label.grid(row=10, column=0, sticky="w", pady=(8, 0))
 
     def _add_slider(self, label: str, variable: tk.DoubleVar, start: float, end: float, row: int) -> None:
         ttk.Label(self.settings_frame, text=label, style="Body.TLabel").grid(row=row * 2, column=0, sticky="w", pady=(4, 4))
@@ -190,14 +211,49 @@ class AvatarCamApp(tk.Tk):
         self.mic_button.configure(text="Desativar microfone")
         self.status_label.configure(text="Ouvindo microfone")
 
-    def _next_avatar(self) -> None:
-        self.avatar_index = (self.avatar_index + 1) % len(AVATARS)
-        self.settings.avatar_index = self.avatar_index
-        self.avatar_canvas.set_avatar(AVATARS[self.avatar_index])
-        if self.obs_window:
-            self.obs_window.set_avatar(AVATARS[self.avatar_index])
-        self.avatar_label.configure(text=f"Avatar: {AVATARS[self.avatar_index]['name']}")
+    def _choose_idle_images(self) -> None:
+        paths = self._pick_images("Escolha imagens idle")
+        if not paths:
+            return
+        self.idle_images = paths
+        self._save_image_sets()
+
+    def _choose_speaking_images(self) -> None:
+        paths = self._pick_images("Escolha imagens falando")
+        if not paths:
+            return
+        self.speaking_images = paths
+        self._save_image_sets()
+
+    def _clear_images(self) -> None:
+        self.idle_images = []
+        self.speaking_images = []
+        self._save_image_sets()
+
+    def _pick_images(self, title: str) -> list[str]:
+        return list(
+            filedialog.askopenfilenames(
+                title=title,
+                filetypes=(
+                    ("Imagens PNG/GIF", "*.png *.gif"),
+                    ("PNG", "*.png"),
+                    ("GIF", "*.gif"),
+                    ("Todos os arquivos", "*.*"),
+                ),
+            )
+        )
+
+    def _save_image_sets(self) -> None:
+        self.settings.idle_images = self.idle_images
+        self.settings.speaking_images = self.speaking_images
+        self.avatar_canvas.set_image_sets(self.idle_images, self.speaking_images)
+        if self.obs_window and self.obs_window.winfo_exists():
+            self.obs_window.set_image_sets(self.idle_images, self.speaking_images)
+        self.avatar_label.configure(text=self._image_summary())
         self.settings.save()
+
+    def _image_summary(self) -> str:
+        return f"Idle: {len(self.idle_images)} imagem(ns) | Fala: {len(self.speaking_images)} imagem(ns)"
 
     def _trigger_test(self) -> None:
         self.test_ticks = 90
@@ -216,9 +272,13 @@ class AvatarCamApp(tk.Tk):
         self.settings.sensitivity = float(self.sensitivity_var.get())
         self.settings.smoothing = float(self.smoothing_var.get())
         self.settings.background = self.background_var.get()
+        self.settings.animation_fps = int(float(self.animation_fps_var.get()))
         self.detector.sensitivity = self.settings.sensitivity
         self.detector.smoothing = self.settings.smoothing
         self.avatar_canvas.set_background(self.settings.background)
+        self.avatar_canvas.set_animation_fps(self.settings.animation_fps)
+        if self.obs_window and self.obs_window.winfo_exists():
+            self.obs_window.set_animation_fps(self.settings.animation_fps)
         self.settings.save()
 
     def _toggle_obs_window(self) -> None:
@@ -230,25 +290,40 @@ class AvatarCamApp(tk.Tk):
         if not self.obs_window or not self.obs_window.winfo_exists():
             self.obs_window = ObsOutputWindow(
                 self,
-                AVATARS[self.avatar_index],
+                self.idle_images,
+                self.speaking_images,
                 self.settings.obs_background,
                 self.settings.obs_always_on_top,
+                self.settings.animation_fps,
             )
         else:
             self.obs_window.deiconify()
             self.obs_window.lift()
 
         self.obs_button.configure(text="Ocultar janela OBS")
+        if self.settings.auto_hide_controls:
+            self._hide_controls()
 
     def _save_obs_settings(self) -> None:
         self.settings.obs_background = self.obs_background_var.get()
         self.settings.obs_always_on_top = self.obs_top_var.get()
+        self.settings.auto_hide_controls = self.auto_hide_var.get()
 
         if self.obs_window and self.obs_window.winfo_exists():
             self.obs_window.set_background(self.settings.obs_background)
             self.obs_window.set_always_on_top(self.settings.obs_always_on_top)
 
         self.settings.save()
+
+    def _hide_controls(self) -> None:
+        if not self.obs_window or not self.obs_window.winfo_exists() or self.obs_window.state() == "withdrawn":
+            self._toggle_obs_window()
+        self.withdraw()
+
+    def show_controls(self) -> None:
+        self.deiconify()
+        self.lift()
+        self.focus_force()
 
     def _tick(self) -> None:
         if self.test_ticks > 0:
