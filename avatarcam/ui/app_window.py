@@ -9,7 +9,8 @@ from avatarcam.audio.microphone import MicrophoneInput
 from avatarcam.core.settings import Settings
 from avatarcam.core.speech_detector import SpeechDetector
 from avatarcam.ui.avatar_canvas import AvatarCanvas
-from avatarcam.ui.theme import DARK, LIGHT
+from avatarcam.ui.obs_window import ObsOutputWindow
+from avatarcam.ui.theme import DARK, LIGHT, OBS_BACKGROUNDS
 
 
 class AvatarCamApp(tk.Tk):
@@ -25,6 +26,7 @@ class AvatarCamApp(tk.Tk):
         self.detector = SpeechDetector(self.settings.sensitivity, self.settings.smoothing)
         self.test_ticks = 0
         self.avatar_index = min(self.settings.avatar_index, len(AVATARS) - 1)
+        self.obs_window: ObsOutputWindow | None = None
 
         self._configure_style()
         self._build_layout()
@@ -91,6 +93,8 @@ class AvatarCamApp(tk.Tk):
         self.smoothing_var = tk.DoubleVar(value=self.settings.smoothing)
         self.dark_var = tk.BooleanVar(value=self.settings.dark_mode)
         self.background_var = tk.StringVar(value=self.settings.background)
+        self.obs_background_var = tk.StringVar(value=self.settings.obs_background)
+        self.obs_top_var = tk.BooleanVar(value=self.settings.obs_always_on_top)
 
         self._add_slider("Sensibilidade", self.sensitivity_var, 0.04, 0.7, 0)
         self._add_slider("Suavizacao", self.smoothing_var, 0.1, 0.95, 1)
@@ -108,10 +112,35 @@ class AvatarCamApp(tk.Tk):
         self.dark_check = ttk.Checkbutton(self.settings_frame, text="Modo escuro", variable=self.dark_var, command=self._toggle_theme_from_check)
         self.dark_check.grid(row=6, column=0, sticky="w", pady=(14, 0))
 
+        self.obs_frame = ttk.LabelFrame(self.control_frame, text="OBS", padding=14)
+        self.obs_frame.grid(row=6, column=0, sticky="ew", pady=(10, 10))
+        self.obs_frame.columnconfigure(0, weight=1)
+
+        self.obs_button = ttk.Button(self.obs_frame, text="Abrir janela OBS", command=self._toggle_obs_window, style="Primary.TButton")
+        self.obs_button.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+
+        ttk.Label(self.obs_frame, text="Fundo da captura", style="Body.TLabel").grid(row=1, column=0, sticky="w", pady=(4, 4))
+        self.obs_background_select = ttk.Combobox(
+            self.obs_frame,
+            textvariable=self.obs_background_var,
+            values=tuple(OBS_BACKGROUNDS.keys()),
+            state="readonly",
+        )
+        self.obs_background_select.grid(row=2, column=0, sticky="ew")
+        self.obs_background_select.bind("<<ComboboxSelected>>", lambda _event: self._save_obs_settings())
+
+        self.obs_top_check = ttk.Checkbutton(
+            self.obs_frame,
+            text="Manter janela OBS no topo",
+            variable=self.obs_top_var,
+            command=self._save_obs_settings,
+        )
+        self.obs_top_check.grid(row=3, column=0, sticky="w", pady=(10, 0))
+
         self.status_label = ttk.Label(self.control_frame, text="Microfone desligado", style="Status.TLabel")
-        self.status_label.grid(row=6, column=0, sticky="ew", pady=(20, 0))
+        self.status_label.grid(row=7, column=0, sticky="ew", pady=(10, 0))
         self.avatar_label = ttk.Label(self.control_frame, text=f"Avatar: {AVATARS[self.avatar_index]['name']}", style="Body.TLabel")
-        self.avatar_label.grid(row=7, column=0, sticky="w", pady=(8, 0))
+        self.avatar_label.grid(row=8, column=0, sticky="w", pady=(8, 0))
 
     def _add_slider(self, label: str, variable: tk.DoubleVar, start: float, end: float, row: int) -> None:
         ttk.Label(self.settings_frame, text=label, style="Body.TLabel").grid(row=row * 2, column=0, sticky="w", pady=(4, 4))
@@ -165,6 +194,8 @@ class AvatarCamApp(tk.Tk):
         self.avatar_index = (self.avatar_index + 1) % len(AVATARS)
         self.settings.avatar_index = self.avatar_index
         self.avatar_canvas.set_avatar(AVATARS[self.avatar_index])
+        if self.obs_window:
+            self.obs_window.set_avatar(AVATARS[self.avatar_index])
         self.avatar_label.configure(text=f"Avatar: {AVATARS[self.avatar_index]['name']}")
         self.settings.save()
 
@@ -190,6 +221,35 @@ class AvatarCamApp(tk.Tk):
         self.avatar_canvas.set_background(self.settings.background)
         self.settings.save()
 
+    def _toggle_obs_window(self) -> None:
+        if self.obs_window and self.obs_window.winfo_exists() and self.obs_window.state() != "withdrawn":
+            self.obs_window.withdraw()
+            self.obs_button.configure(text="Abrir janela OBS")
+            return
+
+        if not self.obs_window or not self.obs_window.winfo_exists():
+            self.obs_window = ObsOutputWindow(
+                self,
+                AVATARS[self.avatar_index],
+                self.settings.obs_background,
+                self.settings.obs_always_on_top,
+            )
+        else:
+            self.obs_window.deiconify()
+            self.obs_window.lift()
+
+        self.obs_button.configure(text="Ocultar janela OBS")
+
+    def _save_obs_settings(self) -> None:
+        self.settings.obs_background = self.obs_background_var.get()
+        self.settings.obs_always_on_top = self.obs_top_var.get()
+
+        if self.obs_window and self.obs_window.winfo_exists():
+            self.obs_window.set_background(self.settings.obs_background)
+            self.obs_window.set_always_on_top(self.settings.obs_always_on_top)
+
+        self.settings.save()
+
     def _tick(self) -> None:
         if self.test_ticks > 0:
             raw_level = 0.32 + math.sin(self.test_ticks / 3) * 0.12
@@ -200,6 +260,8 @@ class AvatarCamApp(tk.Tk):
         state = self.detector.update(raw_level)
         speaking = state.speaking or self.test_ticks > 0
         self.avatar_canvas.update_state(speaking, state.level)
+        if self.obs_window and self.obs_window.winfo_exists() and self.obs_window.state() != "withdrawn":
+            self.obs_window.update_state(speaking, state.level)
 
         percent = int(max(0.0, min(1.0, state.level)) * 100)
         self.volume_bar["value"] = percent

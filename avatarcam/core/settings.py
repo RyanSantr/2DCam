@@ -14,6 +14,8 @@ class Settings:
     dark_mode: bool = True
     background: str = "studio"
     avatar_index: int = 0
+    obs_background: str = "chroma_green"
+    obs_always_on_top: bool = True
 
     @classmethod
     def load(cls) -> "Settings":

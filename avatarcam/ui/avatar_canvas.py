@@ -49,6 +49,9 @@ class AvatarCanvas(tk.Canvas):
     def _draw_background(self, w: int, h: int) -> None:
         top, bottom = BACKGROUNDS.get(self.background, BACKGROUNDS["studio"])
         self.create_rectangle(0, 0, w, h, fill=top, outline="")
+        if self.background.startswith("chroma_") or self.background == "obs_black":
+            return
+
         self.create_oval(-w * 0.15, h * 0.15, w * 0.55, h * 0.85, fill=bottom, outline="")
         self.create_oval(w * 0.45, -h * 0.1, w * 1.18, h * 0.65, fill=bottom, outline="")
 

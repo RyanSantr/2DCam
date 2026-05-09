@@ -29,4 +29,15 @@ BACKGROUNDS = {
     "aurora": ("#123a40", "#5f4b8b"),
     "grid": ("#1f2937", "#111827"),
     "clean": ("#eaf0f8", "#ffffff"),
+    "chroma_green": ("#00ff00", "#00ff00"),
+    "chroma_magenta": ("#ff00ff", "#ff00ff"),
+    "chroma_blue": ("#0047ff", "#0047ff"),
+    "obs_black": ("#000000", "#000000"),
+}
+
+OBS_BACKGROUNDS = {
+    "chroma_green": "Chroma green",
+    "chroma_magenta": "Chroma magenta",
+    "chroma_blue": "Chroma blue",
+    "obs_black": "Black",
 }

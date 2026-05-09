@@ -16,6 +16,9 @@ Aplicacao desktop em Python onde sua camera e substituida por um avatar 2D anima
 - Modo escuro/claro.
 - Fundo personalizavel.
 - Botao de teste de fala.
+- Janela limpa para OBS em 1280x720.
+- Fundo chroma key para remover no OBS.
+- Opcao para manter a janela OBS sempre no topo.
 - Estrutura separada por modulos.
 - Script para gerar `.exe` no Windows.
 
@@ -38,6 +41,7 @@ Aplicacao desktop em Python onde sua camera e substituida por um avatar 2D anima
 |   |-- ui
 |       |-- app_window.py
 |       |-- avatar_canvas.py
+|       |-- obs_window.py
 |       |-- theme.py
 |-- scripts
     |-- run.bat
@@ -94,6 +98,16 @@ Hoje o avatar e desenhado em `avatarcam/ui/avatar_canvas.py`. Para usar artes 2D
 
 A logica de audio e fala ja esta separada, entao voce nao precisa mexer em `avatarcam/audio` nem em `avatarcam/core`.
 
-## Uso Futuro Com OBS
+## Usar Com OBS
 
-Como aplicacao desktop, ela pode ser capturada no OBS por **Window Capture**. Para uma camera virtual real, o proximo passo seria renderizar a janela no OBS ou criar uma saida virtual usando ferramentas como OBS Virtual Camera. Esta versao ja esta preparada para virar uma fonte visual estavel.
+1. Abra o `AvatarCam2D.exe`.
+2. Clique em **Abrir janela OBS**.
+3. No OBS, adicione uma fonte **Window Capture**.
+4. Escolha a janela chamada **OBS Avatar Output**.
+5. Selecione o metodo de captura que funcionar melhor no seu Windows, geralmente **Windows 10 (1903 and up)**.
+6. Para remover o fundo, adicione o filtro **Chroma Key** na fonte.
+7. Use a cor do fundo selecionado no app, por exemplo `chroma_green`.
+
+O app principal fica para controles e configuracoes. A janela **OBS Avatar Output** fica limpa, sem botoes, em formato 16:9, pronta para transmissao.
+
+Para uma camera virtual real, ative a **OBS Virtual Camera** depois de compor a cena no OBS. Assim Discord, Zoom e outros apps podem receber a cena como camera.
