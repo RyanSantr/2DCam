@@ -57,6 +57,8 @@ class Settings:
     chat_enabled: bool = False
     chat_platform: str = "twitch"
     chat_channel: str = ""
+    youtube_api_key: str = ""
+    youtube_live_chat_id: str = ""
     chat_commands_enabled: bool = True
     chat_command_cooldown: int = 8
 
