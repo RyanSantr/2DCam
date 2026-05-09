@@ -19,8 +19,18 @@ class AvatarCanvas(tk.Canvas):
         self.idle_frames: list[tk.PhotoImage] = []
         self.speaking_frames: dict[str, list[tk.PhotoImage]] = {"low": [], "mid": [], "high": []}
         self.pet_paths: list[str] = []
+        self.pet_speaking_paths: list[str] = []
+        self.pet_loud_paths: list[str] = []
         self.pet_frames: list[tk.PhotoImage] = []
+        self.pet_speaking_frames: list[tk.PhotoImage] = []
+        self.pet_loud_frames: list[tk.PhotoImage] = []
+        self.pet_pil_frames: list[Any] = []
+        self.pet_speaking_pil_frames: list[Any] = []
+        self.pet_loud_pil_frames: list[Any] = []
+        self.blink_paths: list[str] = []
+        self.blink_frames: list[tk.PhotoImage] = []
         self._fit_cache: dict[tuple[str, int, int, int], tk.PhotoImage] = {}
+        self._pet_fit_cache: dict[tuple[int, int, float, bool], tk.PhotoImage] = {}
         self.animation_fps = 12
         self.avatar_scale = 1.0
         self.offset_x = 0.0
@@ -33,6 +43,9 @@ class AvatarCanvas(tk.Canvas):
         self.pet_offset_y = 0.62
         self.pet_reaction = "bounce"
         self.pet_reaction_strength = 0.55
+        self.pet_layer = "front"
+        self.pet_opacity = 1.0
+        self.pet_mirror = False
         self.speaking = False
         self.level = 0.0
         self.frame = 0
@@ -44,10 +57,23 @@ class AvatarCanvas(tk.Canvas):
         self.avatar = avatar
         self.draw()
 
-    def set_pet_images(self, pet_paths: list[str]) -> None:
+    def set_pet_images(
+        self,
+        pet_paths: list[str],
+        speaking_paths: list[str] | None = None,
+        loud_paths: list[str] | None = None,
+    ) -> None:
         self.pet_paths = pet_paths
+        self.pet_speaking_paths = speaking_paths or []
+        self.pet_loud_paths = loud_paths or []
         self.pet_frames = self._load_images(pet_paths)
+        self.pet_speaking_frames = self._load_images(self.pet_speaking_paths)
+        self.pet_loud_frames = self._load_images(self.pet_loud_paths)
+        self.pet_pil_frames = self._load_pil_frames(pet_paths)
+        self.pet_speaking_pil_frames = self._load_pil_frames(self.pet_speaking_paths)
+        self.pet_loud_pil_frames = self._load_pil_frames(self.pet_loud_paths)
         self._fit_cache.clear()
+        self._pet_fit_cache.clear()
         self._last_signature = None
         self.draw()
 
@@ -58,6 +84,7 @@ class AvatarCanvas(tk.Canvas):
         low_paths: list[str] | None = None,
         mid_paths: list[str] | None = None,
         high_paths: list[str] | None = None,
+        blink_paths: list[str] | None = None,
     ) -> None:
         self.idle_paths = idle_paths
         self.speaking_paths = {
@@ -70,6 +97,8 @@ class AvatarCanvas(tk.Canvas):
             name: self._load_images(paths)
             for name, paths in self.speaking_paths.items()
         }
+        self.blink_paths = blink_paths or []
+        self.blink_frames = self._load_images(self.blink_paths)
         self._fit_cache.clear()
         self._last_signature = None
         self.draw()
@@ -95,6 +124,9 @@ class AvatarCanvas(tk.Canvas):
         pet_offset_y: float | None = None,
         pet_reaction: str | None = None,
         pet_reaction_strength: float | None = None,
+        pet_layer: str | None = None,
+        pet_opacity: float | None = None,
+        pet_mirror: bool | None = None,
     ) -> None:
         self.idle_motion = idle_motion
         self.avatar_shadow = avatar_shadow
@@ -110,6 +142,13 @@ class AvatarCanvas(tk.Canvas):
             self.pet_reaction = pet_reaction
         if pet_reaction_strength is not None:
             self.pet_reaction_strength = max(0.0, min(1.0, pet_reaction_strength))
+        if pet_layer is not None:
+            self.pet_layer = pet_layer
+        if pet_opacity is not None:
+            self.pet_opacity = max(0.05, min(1.0, pet_opacity))
+        if pet_mirror is not None:
+            self.pet_mirror = pet_mirror
+        self._pet_fit_cache.clear()
         self._last_signature = None
         self.draw()
 
@@ -141,6 +180,7 @@ class AvatarCanvas(tk.Canvas):
             level_bucket,
             frame_bucket,
             len(frames),
+            len(self.blink_frames),
             self.background,
             self.pet_enabled,
             round(self.pet_size, 2),
@@ -148,7 +188,12 @@ class AvatarCanvas(tk.Canvas):
             round(self.pet_offset_y, 2),
             self.pet_reaction,
             round(self.pet_reaction_strength, 2),
+            self.pet_layer,
+            round(self.pet_opacity, 2),
+            self.pet_mirror,
             len(self.pet_frames),
+            len(self.pet_speaking_frames),
+            len(self.pet_loud_frames),
         )
         if signature == self._last_signature:
             return False
@@ -166,12 +211,16 @@ class AvatarCanvas(tk.Canvas):
         cy = h * 0.55 + (h * self.offset_y * 0.5) + idle_bob - talk_bounce
 
         self._draw_background(w, h)
-        if self._draw_custom_image(cx, cy):
+        if self.pet_layer == "back":
             self._draw_pet(w, h, scale)
+        if self._draw_custom_image(cx, cy):
+            if self.pet_layer != "back":
+                self._draw_pet(w, h, scale)
             return
 
         self._draw_empty_state(cx, cy, scale)
-        self._draw_pet(w, h, scale)
+        if self.pet_layer != "back":
+            self._draw_pet(w, h, scale)
 
     def _draw_background(self, w: int, h: int) -> None:
         top, bottom = BACKGROUNDS.get(self.background, BACKGROUNDS["studio"])
@@ -210,6 +259,29 @@ class AvatarCanvas(tk.Canvas):
                 break
         return frames or [tk.PhotoImage(file=path)]
 
+    def _load_pil_frames(self, paths: list[str]) -> list[Any]:
+        try:
+            from PIL import Image, ImageSequence
+        except Exception:
+            return []
+        frames: list[Any] = []
+        for path in paths:
+            file_path = Path(path)
+            if not file_path.is_file():
+                continue
+            try:
+                with Image.open(file_path) as image:
+                    if file_path.suffix.lower() == ".gif":
+                        for frame in ImageSequence.Iterator(image):
+                            frames.append(frame.convert("RGBA").copy())
+                            if len(frames) >= 80:
+                                break
+                    else:
+                        frames.append(image.convert("RGBA").copy())
+            except Exception:
+                continue
+        return frames
+
     def _draw_custom_image(self, cx: float, cy: float) -> bool:
         frames = self._current_frames()
         if not frames:
@@ -233,6 +305,8 @@ class AvatarCanvas(tk.Canvas):
 
     def _current_frames(self) -> list[tk.PhotoImage]:
         if not self.speaking:
+            if self.blink_frames and self.frame % 190 > 178:
+                return self.blink_frames
             return self.idle_frames
 
         if self.level >= 0.45:
@@ -274,7 +348,8 @@ class AvatarCanvas(tk.Canvas):
         )
 
     def _draw_pet(self, w: int, h: int, avatar_scale: float) -> None:
-        if not self.pet_enabled or not self.pet_frames:
+        frames = self._current_pet_frames()
+        if not self.pet_enabled or not frames:
             return
 
         base = max(0.55, min(1.35, avatar_scale)) * self.pet_size
@@ -282,15 +357,22 @@ class AvatarCanvas(tk.Canvas):
         x = w * (0.5 + self.pet_offset_x * 0.5)
         y = h * (0.5 + self.pet_offset_y * 0.5)
         reacting = self.speaking and self.level > 0.08
-        self._draw_pet_image(x, y, size, reacting)
+        self._draw_pet_image(x, y, size, reacting, frames)
 
-    def _draw_pet_image(self, x: float, y: float, size: float, reacting: bool) -> None:
+    def _current_pet_frames(self) -> list[Any]:
+        if self.level >= 0.45 and (self.pet_loud_pil_frames or self.pet_loud_frames):
+            return self.pet_loud_pil_frames or self.pet_loud_frames
+        if self.speaking and (self.pet_speaking_pil_frames or self.pet_speaking_frames):
+            return self.pet_speaking_pil_frames or self.pet_speaking_frames
+        return self.pet_pil_frames or self.pet_frames
+
+    def _draw_pet_image(self, x: float, y: float, size: float, reacting: bool, frames: list[Any]) -> None:
         speed_bonus = 1
         if reacting and self.pet_reaction in ("speed", "bounce_speed", "shake_speed"):
             speed_bonus = 2
         step = max(1, int(30 / max(1, self.animation_fps * speed_bonus)))
-        image = self.pet_frames[(self.frame // step) % len(self.pet_frames)]
-        image = self._fit_pet_image(image, size)
+        source = frames[(self.frame // step) % len(frames)]
+        image = self._fit_pet_image(source, size)
         if self.avatar_shadow:
             self.create_oval(
                 x - image.width() * 0.36,
@@ -312,9 +394,27 @@ class AvatarCanvas(tk.Canvas):
         self.create_image(x, y, image=image, anchor=tk.CENTER)
         self._last_drawn_pet_image = image
 
-    def _fit_pet_image(self, image: tk.PhotoImage, size: float) -> tk.PhotoImage:
+    def _fit_pet_image(self, image: Any, size: float) -> tk.PhotoImage:
         max_w = max(1, int(size * 1.5))
         max_h = max(1, int(size * 1.5))
+        if not isinstance(image, tk.PhotoImage):
+            try:
+                from PIL import ImageOps, ImageTk
+
+                pil_image = image.copy()
+                pil_image.thumbnail((max_w, max_h))
+                if self.pet_mirror:
+                    pil_image = ImageOps.mirror(pil_image)
+                if self.pet_opacity < 0.99:
+                    alpha = pil_image.getchannel("A").point(lambda value: int(value * self.pet_opacity))
+                    pil_image.putalpha(alpha)
+                key = (id(image), max_w, round(self.pet_opacity, 2), self.pet_mirror)
+                if key not in self._pet_fit_cache:
+                    self._pet_fit_cache[key] = ImageTk.PhotoImage(pil_image)
+                return self._pet_fit_cache[key]
+            except Exception:
+                pass
+
         iw = max(1, image.width())
         ih = max(1, image.height())
         if iw <= max_w and ih <= max_h:

@@ -10,9 +10,10 @@ class SpeechState:
 class SpeechDetector:
     """Converte volume bruto em estado estavel de fala."""
 
-    def __init__(self, sensitivity: float, smoothing: float) -> None:
+    def __init__(self, sensitivity: float, smoothing: float, mouth_hold_ticks: int = 7) -> None:
         self.sensitivity = sensitivity
         self.smoothing = smoothing
+        self.mouth_hold_ticks = mouth_hold_ticks
         self.smoothed_level = 0.0
         self.speaking = False
         self.voice_frames = 0
@@ -41,7 +42,7 @@ class SpeechDetector:
 
         if not self.speaking and self.voice_frames >= 1:
             self.speaking = True
-        elif self.speaking and self.silence_frames >= 7:
+        elif self.speaking and self.silence_frames >= self.mouth_hold_ticks:
             self.speaking = False
 
         return SpeechState(level=self.smoothed_level, speaking=self.speaking)

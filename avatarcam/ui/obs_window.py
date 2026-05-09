@@ -16,7 +16,10 @@ class ObsOutputWindow(tk.Toplevel):
         low_images: list[str],
         mid_images: list[str],
         high_images: list[str],
+        blink_images: list[str],
         pet_images: list[str],
+        pet_speaking_images: list[str],
+        pet_loud_images: list[str],
         background: str,
         always_on_top: bool,
         animation_fps: int,
@@ -32,8 +35,8 @@ class ObsOutputWindow(tk.Toplevel):
 
         self.canvas = AvatarCanvas(self)
         self.canvas.pack(fill=tk.BOTH, expand=True)
-        self.canvas.set_image_sets(idle_images, speaking_images, low_images, mid_images, high_images)
-        self.canvas.set_pet_images(pet_images)
+        self.canvas.set_image_sets(idle_images, speaking_images, low_images, mid_images, high_images, blink_images)
+        self.canvas.set_pet_images(pet_images, pet_speaking_images, pet_loud_images)
         self.canvas.set_animation_fps(animation_fps)
         self.canvas.set_background(background)
         self.set_always_on_top(always_on_top)
@@ -48,11 +51,17 @@ class ObsOutputWindow(tk.Toplevel):
         low_images: list[str],
         mid_images: list[str],
         high_images: list[str],
+        blink_images: list[str] | None = None,
     ) -> None:
-        self.canvas.set_image_sets(idle_images, speaking_images, low_images, mid_images, high_images)
+        self.canvas.set_image_sets(idle_images, speaking_images, low_images, mid_images, high_images, blink_images)
 
-    def set_pet_images(self, pet_images: list[str]) -> None:
-        self.canvas.set_pet_images(pet_images)
+    def set_pet_images(
+        self,
+        pet_images: list[str],
+        pet_speaking_images: list[str] | None = None,
+        pet_loud_images: list[str] | None = None,
+    ) -> None:
+        self.canvas.set_pet_images(pet_images, pet_speaking_images, pet_loud_images)
 
     def set_animation_fps(self, fps: int) -> None:
         self.canvas.set_animation_fps(fps)
@@ -70,6 +79,9 @@ class ObsOutputWindow(tk.Toplevel):
         pet_offset_y: float | None = None,
         pet_reaction: str | None = None,
         pet_reaction_strength: float | None = None,
+        pet_layer: str | None = None,
+        pet_opacity: float | None = None,
+        pet_mirror: bool | None = None,
     ) -> None:
         self.canvas.set_visual_options(
             idle_motion,
@@ -80,6 +92,9 @@ class ObsOutputWindow(tk.Toplevel):
             pet_offset_y,
             pet_reaction,
             pet_reaction_strength,
+            pet_layer,
+            pet_opacity,
+            pet_mirror,
         )
 
     def set_background(self, background: str) -> None:

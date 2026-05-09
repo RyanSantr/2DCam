@@ -22,6 +22,7 @@ class Settings:
     speaking_low_images: list[str] | None = None
     speaking_mid_images: list[str] | None = None
     speaking_high_images: list[str] | None = None
+    blink_images: list[str] | None = None
     animation_fps: int = 8
     auto_hide_controls: bool = False
     active_profile: str = "Default"
@@ -42,10 +43,17 @@ class Settings:
     pet_enabled: bool = False
     pet_size: float = 0.85
     pet_images: list[str] | None = None
+    pet_speaking_images: list[str] | None = None
+    pet_loud_images: list[str] | None = None
     pet_offset_x: float = 0.72
     pet_offset_y: float = 0.62
     pet_reaction: str = "bounce"
     pet_reaction_strength: float = 0.55
+    pet_layer: str = "front"
+    pet_opacity: float = 1.0
+    pet_mirror: bool = False
+    mouth_hold_ticks: int = 5
+    auto_start_minimized: bool = False
 
     @classmethod
     def load(cls) -> "Settings":

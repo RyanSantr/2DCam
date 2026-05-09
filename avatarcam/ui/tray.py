@@ -25,6 +25,8 @@ class TrayController:
             pystray.MenuItem("Abrir controles", lambda _icon, _item: self.app.after(0, self.app.show_controls)),
             pystray.MenuItem("Mostrar/Ocultar OBS", lambda _icon, _item: self.app.after(0, self.app._toggle_obs_window)),
             pystray.MenuItem("Microfone on/off", lambda _icon, _item: self.app.after(0, self.app._toggle_microphone)),
+            pystray.MenuItem("Modo live", lambda _icon, _item: self.app.after(0, self.app._enable_live_mode)),
+            pystray.MenuItem("Pet on/off", lambda _icon, _item: self.app.after(0, self.app._toggle_pet)),
             pystray.MenuItem("Sair", lambda _icon, _item: self.app.after(0, self.app.destroy)),
         )
         self.icon = pystray.Icon("AvatarCam2D", image, "AvatarCam 2D", menu)
