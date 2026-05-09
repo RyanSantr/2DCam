@@ -28,6 +28,7 @@ class AvatarCanvas(tk.Canvas):
         self.speaking = False
         self.level = 0.0
         self.frame = 0
+        self._last_signature: tuple | None = None
         self.background = "studio"
         self.bind("<Configure>", self._handle_resize)
 
@@ -55,6 +56,7 @@ class AvatarCanvas(tk.Canvas):
             for name, paths in self.speaking_paths.items()
         }
         self._fit_cache.clear()
+        self._last_signature = None
         self.draw()
 
     def set_animation_fps(self, fps: int) -> None:
@@ -65,26 +67,43 @@ class AvatarCanvas(tk.Canvas):
         self.offset_x = max(-0.8, min(0.8, offset_x))
         self.offset_y = max(-0.8, min(0.8, offset_y))
         self._fit_cache.clear()
+        self._last_signature = None
         self.draw()
 
     def set_visual_options(self, idle_motion: bool, avatar_shadow: bool) -> None:
         self.idle_motion = idle_motion
         self.avatar_shadow = avatar_shadow
+        self._last_signature = None
         self.draw()
 
     def set_background(self, background: str) -> None:
         self.background = background
+        self._last_signature = None
         self.draw()
 
     def update_state(self, speaking: bool, level: float) -> None:
         self.speaking = speaking
         self.level = level
         self.frame += 1
+        if not self._should_redraw():
+            return
         self.draw()
 
     def _handle_resize(self, _event: tk.Event) -> None:
         self._fit_cache.clear()
+        self._last_signature = None
         self.draw()
+
+    def _should_redraw(self) -> bool:
+        frames = self._current_frames()
+        animated = self.idle_motion or len(frames) > 1
+        level_bucket = int(self.level * 10) if self.speaking else 0
+        frame_bucket = (self.frame // max(1, int(30 / self.animation_fps))) if animated else 0
+        signature = (self.speaking, level_bucket, frame_bucket, len(frames), self.background)
+        if signature == self._last_signature:
+            return False
+        self._last_signature = signature
+        return True
 
     def draw(self) -> None:
         self.delete("all")
@@ -132,7 +151,7 @@ class AvatarCanvas(tk.Canvas):
         if not frames:
             return False
 
-        step = max(1, int(60 / self.animation_fps))
+        step = max(1, int(30 / self.animation_fps))
         image = frames[(self.frame // step) % len(frames)]
         image = self._fit_image(image)
         if self.avatar_shadow:

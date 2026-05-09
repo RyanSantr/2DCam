@@ -39,6 +39,9 @@ class AvatarCamApp(tk.Tk):
         self.render_frames = 0
         self.last_fps_time = 0.0
         self.render_fps = 0
+        self.ui_tick = 0
+        self.last_volume_percent = -1
+        self.last_speaking = False
         self.obs_window: ObsOutputWindow | None = None
         self.idle_images = list(self.settings.idle_images or [])
         self.speaking_images = list(self.settings.speaking_images or [])
@@ -818,12 +821,16 @@ class AvatarCamApp(tk.Tk):
             self.obs_window.update_state(speaking, state.level)
 
         percent = int(max(0.0, min(1.0, state.level)) * 100)
-        self.volume_bar["value"] = percent
-        self.volume_label.configure(text=f"{percent}%")
+        self.ui_tick += 1
+        if self.ui_tick % 3 == 0 and abs(percent - self.last_volume_percent) >= 2:
+            self.volume_bar["value"] = percent
+            self.volume_label.configure(text=f"{percent}%")
+            self.last_volume_percent = percent
 
-        if self.microphone.is_running:
+        if self.microphone.is_running and (speaking != self.last_speaking or self.ui_tick % 15 == 0):
             if self.calibration_ticks <= 0:
                 self.status_label.configure(text="Voz detectada" if speaking else f"Ouvindo microfone | FPS {self.render_fps}")
+            self.last_speaking = speaking
         elif self.test_ticks > 0:
             self.status_label.configure(text="Teste de fala ativo")
         else:
@@ -838,7 +845,7 @@ class AvatarCamApp(tk.Tk):
             self.render_frames = 0
             self.last_fps_time = now
 
-        self.after(16, self._tick)
+        self.after(33, self._tick)
 
     def destroy(self) -> None:
         self.log.info("AvatarCam encerrado")

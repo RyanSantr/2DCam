@@ -22,7 +22,7 @@ class Settings:
     speaking_low_images: list[str] | None = None
     speaking_mid_images: list[str] | None = None
     speaking_high_images: list[str] | None = None
-    animation_fps: int = 12
+    animation_fps: int = 8
     auto_hide_controls: bool = False
     active_profile: str = "Default"
     profiles: dict | None = None
