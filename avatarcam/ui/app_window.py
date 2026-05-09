@@ -8,6 +8,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
 from avatarcam.core.app_log import setup_logger
+from avatarcam.core.avatar_pack import export_avatar_pack, import_avatar_folder, import_avatar_pack
 from avatarcam.core.hotkeys import HotkeyManager
 from avatarcam.core.settings import APP_DIR, LOG_DIR, SETTINGS_FILE
 from avatarcam.audio.microphone import MicrophoneInput
@@ -44,6 +45,7 @@ class AvatarCamApp(tk.Tk):
         self.speaking_low_images = list(self.settings.speaking_low_images or [])
         self.speaking_mid_images = list(self.settings.speaking_mid_images or [])
         self.speaking_high_images = list(self.settings.speaking_high_images or [])
+        self.expression_var = tk.StringVar(value=self.settings.active_expression)
         self.hotkeys = HotkeyManager()
         self.tray = TrayController(self)
 
@@ -95,6 +97,7 @@ class AvatarCamApp(tk.Tk):
             self.settings.avatar_offset_x,
             self.settings.avatar_offset_y,
         )
+        self.avatar_canvas.set_visual_options(self.settings.idle_motion, self.settings.avatar_shadow)
 
         meter_box = ttk.Frame(self.stage_frame)
         meter_box.grid(row=2, column=0, sticky="ew", pady=(12, 0))
@@ -140,16 +143,21 @@ class AvatarCamApp(tk.Tk):
         self.speaking_levels_button.grid(row=6, column=0, sticky="ew", pady=5)
         self.import_folder_button = ttk.Button(self.control_frame, text="Importar pasta de avatar", command=self._import_avatar_folder)
         self.import_folder_button.grid(row=7, column=0, sticky="ew", pady=5)
+        self.pack_row = ttk.Frame(self.control_frame)
+        self.pack_row.grid(row=8, column=0, sticky="ew", pady=5)
+        self.pack_row.columnconfigure(0, weight=1)
+        ttk.Button(self.pack_row, text="Importar .avatarpack", command=self._import_pack).grid(row=0, column=0, sticky="ew", padx=(0, 4))
+        ttk.Button(self.pack_row, text="Exportar", command=self._export_pack).grid(row=0, column=1, sticky="ew")
         self.clear_images_button = ttk.Button(self.control_frame, text="Limpar imagens", command=self._clear_images)
-        self.clear_images_button.grid(row=8, column=0, sticky="ew", pady=5)
+        self.clear_images_button.grid(row=9, column=0, sticky="ew", pady=5)
 
         self.test_button = ttk.Button(self.control_frame, text="Teste de fala", command=self._trigger_test)
-        self.test_button.grid(row=9, column=0, sticky="ew", pady=5)
+        self.test_button.grid(row=10, column=0, sticky="ew", pady=5)
         self.calibrate_button = ttk.Button(self.control_frame, text="Calibrar ruido ambiente", command=self._start_calibration)
-        self.calibrate_button.grid(row=10, column=0, sticky="ew", pady=5)
+        self.calibrate_button.grid(row=11, column=0, sticky="ew", pady=5)
 
         self.settings_frame = ttk.LabelFrame(self.control_frame, text="Configuracoes", padding=14)
-        self.settings_frame.grid(row=11, column=0, sticky="ew", pady=(18, 10))
+        self.settings_frame.grid(row=12, column=0, sticky="ew", pady=(18, 10))
         self.settings_frame.columnconfigure(0, weight=1)
 
         self.sensitivity_var = tk.DoubleVar(value=self.settings.sensitivity)
@@ -166,6 +174,9 @@ class AvatarCamApp(tk.Tk):
         self.avatar_x_var = tk.DoubleVar(value=self.settings.avatar_offset_x)
         self.avatar_y_var = tk.DoubleVar(value=self.settings.avatar_offset_y)
         self.performance_var = tk.BooleanVar(value=self.settings.performance_mode)
+        self.idle_motion_var = tk.BooleanVar(value=self.settings.idle_motion)
+        self.avatar_shadow_var = tk.BooleanVar(value=self.settings.avatar_shadow)
+        self.streamer_safe_var = tk.BooleanVar(value=self.settings.streamer_safe)
 
         self._add_slider("Sensibilidade", self.sensitivity_var, 0.04, 0.7, 0)
         self._add_slider("Suavizacao", self.smoothing_var, 0.1, 0.95, 1)
@@ -188,9 +199,21 @@ class AvatarCamApp(tk.Tk):
         self.dark_check.grid(row=14, column=0, sticky="w", pady=(14, 0))
         self.performance_check = ttk.Checkbutton(self.settings_frame, text="Modo performance: pausar preview", variable=self.performance_var, command=self._save_settings)
         self.performance_check.grid(row=15, column=0, sticky="w", pady=(8, 0))
+        ttk.Checkbutton(self.settings_frame, text="Idle automatico", variable=self.idle_motion_var, command=self._save_settings).grid(row=16, column=0, sticky="w", pady=(8, 0))
+        ttk.Checkbutton(self.settings_frame, text="Sombra do avatar", variable=self.avatar_shadow_var, command=self._save_settings).grid(row=17, column=0, sticky="w", pady=(8, 0))
+        ttk.Checkbutton(self.settings_frame, text="Modo streamer seguro", variable=self.streamer_safe_var, command=self._save_settings).grid(row=18, column=0, sticky="w", pady=(8, 0))
+
+        self.expression_frame = ttk.LabelFrame(self.control_frame, text="Expressoes", padding=14)
+        self.expression_frame.grid(row=13, column=0, sticky="ew", pady=(10, 10))
+        self.expression_frame.columnconfigure(0, weight=1)
+        self.expression_select = ttk.Combobox(self.expression_frame, textvariable=self.expression_var, values=self._expression_names(), state="readonly")
+        self.expression_select.grid(row=0, column=0, sticky="ew", pady=(0, 6))
+        self.expression_select.bind("<<ComboboxSelected>>", lambda _event: self._load_expression(self.expression_var.get()))
+        ttk.Button(self.expression_frame, text="Salvar expressao atual", command=self._save_expression).grid(row=1, column=0, sticky="ew", pady=(0, 6))
+        ttk.Button(self.expression_frame, text="Nova expressao", command=self._new_expression).grid(row=2, column=0, sticky="ew")
 
         self.obs_frame = ttk.LabelFrame(self.control_frame, text="OBS", padding=14)
-        self.obs_frame.grid(row=12, column=0, sticky="ew", pady=(10, 10))
+        self.obs_frame.grid(row=14, column=0, sticky="ew", pady=(10, 10))
         self.obs_frame.columnconfigure(0, weight=1)
 
         self.obs_button = ttk.Button(self.obs_frame, text="Abrir janela OBS", command=self._toggle_obs_window, style="Primary.TButton")
@@ -244,22 +267,27 @@ class AvatarCamApp(tk.Tk):
         self.hide_button.grid(row=8, column=0, sticky="ew", pady=(10, 0))
         self.back_button = ttk.Button(self.obs_frame, text="Enviar OBS para tras", command=self._send_obs_to_back)
         self.back_button.grid(row=9, column=0, sticky="ew", pady=(8, 0))
+        ttk.Button(self.obs_frame, text="Assistente OBS", command=self._show_obs_assistant).grid(row=10, column=0, sticky="ew", pady=(8, 0))
 
         self.privacy_frame = ttk.LabelFrame(self.control_frame, text="Privacidade e diagnostico", padding=14)
-        self.privacy_frame.grid(row=13, column=0, sticky="ew", pady=(10, 10))
+        self.privacy_frame.grid(row=15, column=0, sticky="ew", pady=(10, 10))
         self.privacy_frame.columnconfigure(0, weight=1)
         ttk.Button(self.privacy_frame, text="Abrir pasta de logs", command=self._open_logs).grid(row=0, column=0, sticky="ew", pady=(0, 6))
         ttk.Button(self.privacy_frame, text="Apagar configuracoes locais", command=self._reset_privacy).grid(row=1, column=0, sticky="ew")
 
         self.status_label = ttk.Label(self.control_frame, text="Microfone desligado", style="Status.TLabel")
-        self.status_label.grid(row=14, column=0, sticky="ew", pady=(10, 0))
-        self.avatar_label = ttk.Label(self.control_frame, text=self._image_summary(), style="Body.TLabel")
-        self.avatar_label.grid(row=15, column=0, sticky="w", pady=(8, 0))
+        self.status_label.grid(row=16, column=0, sticky="ew", pady=(10, 0))
+        self.avatar_label = ttk.Label(
+            self.control_frame,
+            text="Assets carregados" if self.settings.streamer_safe else self._image_summary(),
+            style="Body.TLabel",
+        )
+        self.avatar_label.grid(row=17, column=0, sticky="w", pady=(8, 0))
         hotkey_text = "Hotkeys: F8 mic, F9 teste, F10 controles, F11 OBS"
         if self.hotkeys.available:
             hotkey_text += " | globais ativos"
         self.hotkey_label = ttk.Label(self.control_frame, text=hotkey_text, style="Body.TLabel")
-        self.hotkey_label.grid(row=16, column=0, sticky="w", pady=(8, 0))
+        self.hotkey_label.grid(row=18, column=0, sticky="w", pady=(8, 0))
 
     def _sync_control_scroll(self, _event: tk.Event) -> None:
         self.control_canvas.configure(scrollregion=self.control_canvas.bbox("all"))
@@ -301,14 +329,23 @@ class AvatarCamApp(tk.Tk):
         self.bind("<F9>", lambda _event: self._trigger_test())
         self.bind("<F10>", lambda _event: self.show_controls())
         self.bind("<F11>", lambda _event: self._toggle_obs_window())
+        for index in range(1, 5):
+            self.bind(f"<Control-Key-{index}>", lambda _event, i=index: self._load_expression_by_index(i))
         self.hotkeys.register("f8", lambda: self.after(0, self._toggle_microphone))
         self.hotkeys.register("f9", lambda: self.after(0, self._trigger_test))
         self.hotkeys.register("f10", lambda: self.after(0, self.show_controls))
         self.hotkeys.register("f11", lambda: self.after(0, self._toggle_obs_window))
+        for index in range(1, 5):
+            self.hotkeys.register(f"ctrl+{index}", lambda i=index: self.after(0, lambda: self._load_expression_by_index(i)))
 
     def _profile_names(self) -> tuple[str, ...]:
         profiles = self.settings.profiles or {}
         names = sorted(set(profiles.keys()) | {self.settings.active_profile, "Default"})
+        return tuple(names)
+
+    def _expression_names(self) -> tuple[str, ...]:
+        expressions = self.settings.expressions or {}
+        names = sorted(set(expressions.keys()) | {self.settings.active_expression, "Default"})
         return tuple(names)
 
     def _toggle_microphone(self) -> None:
@@ -364,18 +401,84 @@ class AvatarCamApp(tk.Tk):
         if not folder:
             return
 
-        root = Path(folder)
-        self.idle_images = self._images_from_folder(root / "idle")
-        self.speaking_images = self._images_from_folder(root / "talk") or self._images_from_folder(root / "fala")
-        self.speaking_low_images = self._images_from_folder(root / "talk_low") or self._images_from_folder(root / "fala_baixa")
-        self.speaking_mid_images = self._images_from_folder(root / "talk_mid") or self._images_from_folder(root / "fala_media")
-        self.speaking_high_images = self._images_from_folder(root / "talk_high") or self._images_from_folder(root / "fala_alta")
+        name = simpledialog.askstring("Nome do avatar", "Nome para salvar na biblioteca:", initialvalue=Path(folder).name)
+        if not name:
+            return
+        imported = import_avatar_folder(folder, name)
+        self.idle_images = imported["idle"]
+        self.speaking_images = imported["talk"]
+        self.speaking_low_images = imported["talk_low"]
+        self.speaking_mid_images = imported["talk_mid"]
+        self.speaking_high_images = imported["talk_high"]
 
         if not self.idle_images and not self.speaking_images:
             messagebox.showinfo("Pasta sem avatar", "Use subpastas idle e talk, ou idle e fala.")
             return
 
         self._save_image_sets()
+
+    def _export_pack(self) -> None:
+        path = filedialog.asksaveasfilename(
+            title="Exportar avatarpack",
+            defaultextension=".avatarpack",
+            filetypes=(("Avatar pack", "*.avatarpack"), ("Zip", "*.zip")),
+        )
+        if not path:
+            return
+        export_avatar_pack(
+            path,
+            self.profile_var.get() or "Avatar",
+            self._current_image_sets(),
+            {
+                "sensitivity": float(self.sensitivity_var.get()),
+                "smoothing": float(self.smoothing_var.get()),
+                "animation_fps": int(float(self.animation_fps_var.get())),
+                "avatar_scale": float(self.avatar_scale_var.get()),
+                "avatar_offset_x": float(self.avatar_x_var.get()),
+                "avatar_offset_y": float(self.avatar_y_var.get()),
+                "idle_motion": self.idle_motion_var.get(),
+                "avatar_shadow": self.avatar_shadow_var.get(),
+            },
+        )
+        self.status_label.configure(text="Avatarpack exportado")
+
+    def _import_pack(self) -> None:
+        path = filedialog.askopenfilename(
+            title="Importar avatarpack",
+            filetypes=(("Avatar pack", "*.avatarpack *.zip"), ("Todos os arquivos", "*.*")),
+        )
+        if not path:
+            return
+        pack = import_avatar_pack(path)
+        sets = pack["sets"]
+        self.idle_images = sets["idle"]
+        self.speaking_images = sets["talk"]
+        self.speaking_low_images = sets["talk_low"]
+        self.speaking_mid_images = sets["talk_mid"]
+        self.speaking_high_images = sets["talk_high"]
+        settings = pack.get("settings", {})
+        self.sensitivity_var.set(float(settings.get("sensitivity", self.sensitivity_var.get())))
+        self.smoothing_var.set(float(settings.get("smoothing", self.smoothing_var.get())))
+        self.animation_fps_var.set(int(settings.get("animation_fps", self.animation_fps_var.get())))
+        self.avatar_scale_var.set(float(settings.get("avatar_scale", self.avatar_scale_var.get())))
+        self.avatar_x_var.set(float(settings.get("avatar_offset_x", self.avatar_x_var.get())))
+        self.avatar_y_var.set(float(settings.get("avatar_offset_y", self.avatar_y_var.get())))
+        self.idle_motion_var.set(bool(settings.get("idle_motion", self.idle_motion_var.get())))
+        self.avatar_shadow_var.set(bool(settings.get("avatar_shadow", self.avatar_shadow_var.get())))
+        self.profile_var.set(pack.get("name", "Imported"))
+        self._save_settings()
+        self._save_image_sets()
+        self._save_profile()
+        self.status_label.configure(text="Avatarpack importado")
+
+    def _current_image_sets(self) -> dict:
+        return {
+            "idle": self.idle_images,
+            "talk": self.speaking_images,
+            "talk_low": self.speaking_low_images,
+            "talk_mid": self.speaking_mid_images,
+            "talk_high": self.speaking_high_images,
+        }
 
     def _images_from_folder(self, folder: Path) -> list[str]:
         if not folder.is_dir():
@@ -430,7 +533,7 @@ class AvatarCamApp(tk.Tk):
                 self.speaking_mid_images,
                 self.speaking_high_images,
             )
-        self.avatar_label.configure(text=self._image_summary())
+        self.avatar_label.configure(text="Assets carregados" if self.settings.streamer_safe else self._image_summary())
         self.settings.save()
 
     def _image_summary(self) -> str:
@@ -454,12 +557,49 @@ class AvatarCamApp(tk.Tk):
             "avatar_offset_y": float(self.avatar_y_var.get()),
             "obs_background": self.obs_background_var.get(),
             "obs_resolution": self.obs_resolution_var.get(),
+            "expressions": self.settings.expressions or {},
         }
         self.settings.profiles = profiles
         self.settings.active_profile = name
         self.profile_select.configure(values=self._profile_names())
         self.settings.save()
         self.status_label.configure(text=f"Perfil salvo: {name}")
+
+    def _save_expression(self) -> None:
+        name = self.expression_var.get() or "Default"
+        expressions = self.settings.expressions or {}
+        expressions[name] = self._current_image_sets()
+        self.settings.expressions = expressions
+        self.settings.active_expression = name
+        self.expression_select.configure(values=self._expression_names())
+        self.settings.save()
+        self.status_label.configure(text=f"Expressao salva: {name}")
+
+    def _new_expression(self) -> None:
+        name = simpledialog.askstring("Nova expressao", "Nome da expressao:")
+        if not name:
+            return
+        self.expression_var.set(name)
+        self._save_expression()
+
+    def _load_expression_by_index(self, index: int) -> None:
+        names = self._expression_names()
+        if 0 <= index - 1 < len(names):
+            self._load_expression(names[index - 1])
+
+    def _load_expression(self, name: str) -> None:
+        expression = (self.settings.expressions or {}).get(name)
+        if not expression:
+            return
+        self.idle_images = list(expression.get("idle") or [])
+        self.speaking_images = list(expression.get("talk") or [])
+        self.speaking_low_images = list(expression.get("talk_low") or [])
+        self.speaking_mid_images = list(expression.get("talk_mid") or [])
+        self.speaking_high_images = list(expression.get("talk_high") or [])
+        self.settings.active_expression = name
+        self.expression_var.set(name)
+        self._save_image_sets()
+        self.status_label.configure(text=f"Expressao: {name}")
 
     def _new_profile(self) -> None:
         name = simpledialog.askstring("Novo perfil", "Nome do perfil:")
@@ -525,6 +665,9 @@ class AvatarCamApp(tk.Tk):
         self.settings.avatar_offset_x = float(self.avatar_x_var.get())
         self.settings.avatar_offset_y = float(self.avatar_y_var.get())
         self.settings.performance_mode = self.performance_var.get()
+        self.settings.idle_motion = self.idle_motion_var.get()
+        self.settings.avatar_shadow = self.avatar_shadow_var.get()
+        self.settings.streamer_safe = self.streamer_safe_var.get()
         self.detector.sensitivity = self.settings.sensitivity
         self.detector.smoothing = self.settings.smoothing
         self.avatar_canvas.set_background(self.settings.background)
@@ -534,6 +677,7 @@ class AvatarCamApp(tk.Tk):
             self.settings.avatar_offset_x,
             self.settings.avatar_offset_y,
         )
+        self.avatar_canvas.set_visual_options(self.settings.idle_motion, self.settings.avatar_shadow)
         if self.obs_window and self.obs_window.winfo_exists():
             self.obs_window.set_animation_fps(self.settings.animation_fps)
             self.obs_window.set_transform(
@@ -541,6 +685,7 @@ class AvatarCamApp(tk.Tk):
                 self.settings.avatar_offset_x,
                 self.settings.avatar_offset_y,
             )
+            self.obs_window.set_visual_options(self.settings.idle_motion, self.settings.avatar_shadow)
         self.settings.save()
 
     def _toggle_obs_window(self) -> None:
@@ -568,6 +713,7 @@ class AvatarCamApp(tk.Tk):
                 self.settings.avatar_offset_x,
                 self.settings.avatar_offset_y,
             )
+            self.obs_window.set_visual_options(self.settings.idle_motion, self.settings.avatar_shadow)
         else:
             self.obs_window.deiconify()
             if self.settings.obs_always_on_top:
@@ -606,6 +752,18 @@ class AvatarCamApp(tk.Tk):
         if save:
             self.settings.save()
         self.status_label.configure(text="OBS rodando atras das janelas")
+
+    def _show_obs_assistant(self) -> None:
+        messagebox.showinfo(
+            "Assistente OBS",
+            "1. Clique em Abrir janela OBS.\n"
+            "2. No OBS, adicione Window Capture.\n"
+            "3. Escolha OBS Avatar Output.\n"
+            "4. Adicione filtro Chroma Key se usar fundo verde/magenta/azul.\n"
+            "5. Desmarque Manter janela OBS no topo antes de jogar.\n"
+            "6. Use Enviar OBS para tras ou Modo live.\n"
+            "7. Ative OBS Virtual Camera para usar em Discord/Zoom.",
+        )
 
     def show_controls(self) -> None:
         self.deiconify()

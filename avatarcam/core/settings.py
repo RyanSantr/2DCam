@@ -32,6 +32,11 @@ class Settings:
     avatar_offset_x: float = 0.0
     avatar_offset_y: float = 0.0
     performance_mode: bool = False
+    expressions: dict | None = None
+    active_expression: str = "Default"
+    idle_motion: bool = True
+    avatar_shadow: bool = True
+    streamer_safe: bool = False
 
     @classmethod
     def load(cls) -> "Settings":

@@ -16,12 +16,16 @@ Aplicacao desktop em Python onde sua camera e substituida por um avatar 2D anima
 - FPS da animacao ajustavel.
 - Perfis de avatar para lives diferentes.
 - Importacao automatica por pasta.
+- Importacao copia os assets para a biblioteca local do app.
+- Exportar/importar `.avatarpack`.
+- Sistema de expressoes com atalhos `Ctrl+1` ate `Ctrl+4`.
 - Estados de fala baixa, media e alta por volume.
 - Calibracao automatica do ruido ambiente.
 - Hotkeys: `F8`, `F9`, `F10`, `F11`.
 - Icone de bandeja do Windows com menu rapido.
 - Editor de escala e posicao do avatar.
 - Modo performance para pausar o preview do painel.
+- Idle automatico e sombra simples do avatar.
 - Logs locais rotativos para diagnostico.
 - Botao para apagar configuracoes, perfis, caminhos de imagens e logs.
 - Modo escuro/claro.
@@ -51,6 +55,7 @@ Aplicacao desktop em Python onde sua camera e substituida por um avatar 2D anima
 |   |   |-- microphone.py
 |   |-- core
 |   |   |-- app_log.py
+|   |   |-- avatar_pack.py
 |   |   |-- hotkeys.py
 |   |   |-- settings.py
 |   |   |-- speech_detector.py
@@ -134,6 +139,14 @@ fala_media/
 fala_alta/
 ```
 
+Ao importar uma pasta, o app copia as imagens para:
+
+```text
+%USERPROFILE%\.avatarcam_2d\avatars
+```
+
+Assim o avatar continua funcionando mesmo se voce mover ou apagar a pasta original.
+
 ## Usar Suas Proprias Artes
 
 O app nao depende mais de avatar pronto. Voce escolhe arquivos locais para cada estado:
@@ -159,6 +172,14 @@ Tudo fica local no seu PC. O app nao envia audio nem imagens para internet.
 
 Quando possivel no Windows, o app registra esses atalhos como globais. Se o Windows bloquear, eles continuam funcionando quando a janela do app estiver focada.
 
+Expressoes:
+
+- `Ctrl+1` ate `Ctrl+4`: carrega as primeiras expressoes salvas.
+
+## Avatarpack
+
+Use **Exportar** para gerar um arquivo `.avatarpack` com imagens e configuracoes principais. Use **Importar .avatarpack** para restaurar em outro PC ou compartilhar seu avatar.
+
 ## Calibracao
 
 Use **Calibrar ruido ambiente** antes da live. Fique em silencio por 3 segundos. O app mede o ruido do seu quarto, teclado e ventoinhas, depois ajusta a sensibilidade automaticamente.
@@ -171,6 +192,8 @@ Use os controles:
 - **Posicao X** para mover para esquerda/direita.
 - **Posicao Y** para mover para cima/baixo.
 - **Modo performance** para pausar o preview no painel principal e renderizar apenas a janela OBS.
+- **Idle automatico** para movimento leve quando parado.
+- **Sombra do avatar** para dar leitura melhor no OBS.
 
 Esses ajustes tambem sao aplicados na janela **OBS Avatar Output**.
 

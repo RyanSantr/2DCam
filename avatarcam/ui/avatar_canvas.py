@@ -23,6 +23,8 @@ class AvatarCanvas(tk.Canvas):
         self.avatar_scale = 1.0
         self.offset_x = 0.0
         self.offset_y = 0.0
+        self.idle_motion = True
+        self.avatar_shadow = True
         self.speaking = False
         self.level = 0.0
         self.frame = 0
@@ -65,6 +67,11 @@ class AvatarCanvas(tk.Canvas):
         self._fit_cache.clear()
         self.draw()
 
+    def set_visual_options(self, idle_motion: bool, avatar_shadow: bool) -> None:
+        self.idle_motion = idle_motion
+        self.avatar_shadow = avatar_shadow
+        self.draw()
+
     def set_background(self, background: str) -> None:
         self.background = background
         self.draw()
@@ -85,7 +92,7 @@ class AvatarCanvas(tk.Canvas):
         h = max(1, self.winfo_height())
         cx = w / 2 + (w * self.offset_x * 0.5)
         scale = min(w / 430, h / 520) * self.avatar_scale
-        idle_bob = math.sin(self.frame / 18) * 5 * scale
+        idle_bob = math.sin(self.frame / 18) * 5 * scale if self.idle_motion else 0
         talk_bounce = min(1.0, self.level * 3) * 9 * scale if self.speaking else 0
         cy = h * 0.55 + (h * self.offset_y * 0.5) + idle_bob - talk_bounce
 
@@ -128,6 +135,15 @@ class AvatarCanvas(tk.Canvas):
         step = max(1, int(60 / self.animation_fps))
         image = frames[(self.frame // step) % len(frames)]
         image = self._fit_image(image)
+        if self.avatar_shadow:
+            self.create_oval(
+                cx - image.width() * 0.36,
+                cy + image.height() * 0.36,
+                cx + image.width() * 0.36,
+                cy + image.height() * 0.47,
+                fill="#000000",
+                outline="",
+            )
         self.create_image(cx, cy, image=image, anchor=tk.CENTER)
         self._last_drawn_image = image
         return True
