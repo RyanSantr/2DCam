@@ -143,55 +143,6 @@ class AvatarCamApp(tk.Tk):
         self.control_canvas.bind("<Configure>", self._sync_control_width)
         self.control_frame.columnconfigure(0, weight=1)
 
-        ttk.Label(self.control_frame, text="Controles", style="Eyebrow.TLabel").grid(row=0, column=0, sticky="w")
-        ttk.Label(self.control_frame, text="Operacao ao vivo", style="PanelTitle.TLabel").grid(row=1, column=0, sticky="w", pady=(0, 16))
-
-        self.mic_button = ttk.Button(self.control_frame, text="Ativar microfone", command=self._toggle_microphone, style="Primary.TButton")
-        self.mic_button.grid(row=2, column=0, sticky="ew", pady=5)
-
-        profile_row = ttk.Frame(self.control_frame)
-        profile_row.grid(row=3, column=0, sticky="ew", pady=(0, 5))
-        profile_row.columnconfigure(0, weight=1)
-        self.profile_var = tk.StringVar(value=self.settings.active_profile)
-        self.profile_select = ttk.Combobox(profile_row, textvariable=self.profile_var, values=self._profile_names(), state="readonly")
-        self.profile_select.grid(row=0, column=0, sticky="ew", padx=(0, 5))
-        self.profile_select.bind("<<ComboboxSelected>>", lambda _event: self._load_profile(self.profile_var.get()))
-        ttk.Button(profile_row, text="Salvar", command=self._save_profile).grid(row=0, column=1, padx=(0, 5))
-        ttk.Button(profile_row, text="Novo", command=self._new_profile).grid(row=0, column=2)
-
-        self.idle_button = ttk.Button(self.control_frame, text="Escolher imagens idle", command=self._choose_idle_images)
-        self.idle_button.grid(row=4, column=0, sticky="ew", pady=5)
-        self.speaking_button = ttk.Button(self.control_frame, text="Escolher fala padrao", command=self._choose_speaking_images)
-        self.speaking_button.grid(row=5, column=0, sticky="ew", pady=5)
-        self.speaking_levels_button = ttk.Button(self.control_frame, text="Escolher fala baixa/media/alta", command=self._choose_level_images)
-        self.speaking_levels_button.grid(row=6, column=0, sticky="ew", pady=5)
-        self.blink_button = ttk.Button(self.control_frame, text="Escolher piscar", command=self._choose_blink_images)
-        self.blink_button.grid(row=7, column=0, sticky="ew", pady=5)
-        self.import_folder_button = ttk.Button(self.control_frame, text="Importar pasta de avatar", command=self._import_avatar_folder)
-        self.import_folder_button.grid(row=8, column=0, sticky="ew", pady=5)
-        self.pack_row = ttk.Frame(self.control_frame)
-        self.pack_row.grid(row=9, column=0, sticky="ew", pady=5)
-        self.pack_row.columnconfigure(0, weight=1)
-        ttk.Button(self.pack_row, text="Importar .avatarpack", command=self._import_pack).grid(row=0, column=0, sticky="ew", padx=(0, 4))
-        ttk.Button(self.pack_row, text="Exportar", command=self._export_pack).grid(row=0, column=1, sticky="ew")
-        self.pet_button = ttk.Button(self.control_frame, text="Escolher GIF/PNG do pet", command=self._choose_pet_images)
-        self.pet_button.grid(row=10, column=0, sticky="ew", pady=5)
-        self.pet_states_button = ttk.Button(self.control_frame, text="Escolher pet fala/alto", command=self._choose_pet_state_images)
-        self.pet_states_button.grid(row=11, column=0, sticky="ew", pady=5)
-        self.clear_pet_button = ttk.Button(self.control_frame, text="Limpar pet", command=self._clear_pet_images)
-        self.clear_pet_button.grid(row=12, column=0, sticky="ew", pady=5)
-        self.clear_images_button = ttk.Button(self.control_frame, text="Limpar imagens", command=self._clear_images)
-        self.clear_images_button.grid(row=13, column=0, sticky="ew", pady=5)
-
-        self.test_button = ttk.Button(self.control_frame, text="Teste de fala", command=self._trigger_test)
-        self.test_button.grid(row=14, column=0, sticky="ew", pady=5)
-        self.calibrate_button = ttk.Button(self.control_frame, text="Calibrar ruido ambiente", command=self._start_calibration)
-        self.calibrate_button.grid(row=15, column=0, sticky="ew", pady=5)
-
-        self.settings_frame = ttk.LabelFrame(self.control_frame, text="Configuracoes", padding=14)
-        self.settings_frame.grid(row=16, column=0, sticky="ew", pady=(18, 10))
-        self.settings_frame.columnconfigure(0, weight=1)
-
         self.sensitivity_var = tk.DoubleVar(value=self.settings.sensitivity)
         self.smoothing_var = tk.DoubleVar(value=self.settings.smoothing)
         self.dark_var = tk.BooleanVar(value=self.settings.dark_mode)
@@ -222,166 +173,227 @@ class AvatarCamApp(tk.Tk):
         self.mouth_hold_var = tk.IntVar(value=self.settings.mouth_hold_ticks)
         self.auto_start_var = tk.BooleanVar(value=self.settings.auto_start_minimized)
 
-        self._add_slider("Sensibilidade", self.sensitivity_var, 0.04, 0.7, 0)
-        self._add_slider("Suavizacao", self.smoothing_var, 0.1, 0.95, 1)
-        self._add_slider("FPS da animacao", self.animation_fps_var, 1, 30, 2)
-        self._add_slider("Escala avatar", self.avatar_scale_var, 0.25, 2.5, 3)
-        self._add_slider("Posicao X", self.avatar_x_var, -0.8, 0.8, 4)
-        self._add_slider("Posicao Y", self.avatar_y_var, -0.8, 0.8, 5)
-        self._add_slider("Tamanho do pet", self.pet_size_var, 0.45, 1.6, 6)
-        self._add_slider("Pet posicao X", self.pet_x_var, -0.9, 0.9, 7)
-        self._add_slider("Pet posicao Y", self.pet_y_var, -0.9, 0.9, 8)
-        self._add_slider("Forca reacao pet", self.pet_strength_var, 0.0, 1.0, 9)
-        self._add_slider("Segurar boca", self.mouth_hold_var, 1, 18, 10)
+        ttk.Label(self.control_frame, text="Controles", style="Eyebrow.TLabel").grid(row=0, column=0, sticky="w")
+        ttk.Label(self.control_frame, text="Painel da live", style="PanelTitle.TLabel").grid(row=1, column=0, sticky="w", pady=(0, 12))
 
-        ttk.Label(self.settings_frame, text="Reacao do pet", style="Body.TLabel").grid(row=22, column=0, sticky="w", pady=(12, 4))
-        self.pet_reaction_select = ttk.Combobox(
-            self.settings_frame,
-            textvariable=self.pet_reaction_var,
-            values=("none", "bounce", "shake", "float", "speed", "bounce_speed", "shake_speed"),
-            state="readonly",
-        )
-        self.pet_reaction_select.grid(row=23, column=0, sticky="ew")
-        self.pet_reaction_select.bind("<<ComboboxSelected>>", lambda _event: self._save_settings())
+        self.control_tabs = ttk.Notebook(self.control_frame)
+        self.control_tabs.grid(row=2, column=0, sticky="nsew")
+        self.live_tab = ttk.Frame(self.control_tabs, padding=12)
+        self.assets_tab = ttk.Frame(self.control_tabs, padding=12)
+        self.tuning_tab = ttk.Frame(self.control_tabs, padding=12)
+        self.obs_tab = ttk.Frame(self.control_tabs, padding=12)
+        self.system_tab = ttk.Frame(self.control_tabs, padding=12)
+        for tab in (self.live_tab, self.assets_tab, self.tuning_tab, self.obs_tab, self.system_tab):
+            tab.columnconfigure(0, weight=1)
+        self.control_tabs.add(self.live_tab, text="Operacao")
+        self.control_tabs.add(self.assets_tab, text="Assets")
+        self.control_tabs.add(self.tuning_tab, text="Ajustes")
+        self.control_tabs.add(self.obs_tab, text="OBS")
+        self.control_tabs.add(self.system_tab, text="Sistema")
 
-        ttk.Label(self.settings_frame, text="Camada do pet", style="Body.TLabel").grid(row=24, column=0, sticky="w", pady=(12, 4))
-        self.pet_layer_select = ttk.Combobox(
-            self.settings_frame,
-            textvariable=self.pet_layer_var,
-            values=("front", "back"),
-            state="readonly",
-        )
-        self.pet_layer_select.grid(row=25, column=0, sticky="ew")
-        self.pet_layer_select.bind("<<ComboboxSelected>>", lambda _event: self._save_settings())
-        self._add_slider("Opacidade pet", self.pet_opacity_var, 0.1, 1.0, 13)
+        live_actions = ttk.LabelFrame(self.live_tab, text="Live", padding=12)
+        live_actions.grid(row=0, column=0, sticky="ew", pady=(0, 10))
+        live_actions.columnconfigure(0, weight=1)
+        self.mic_button = ttk.Button(live_actions, text="Ativar microfone", command=self._toggle_microphone, style="Primary.TButton")
+        self.mic_button.grid(row=0, column=0, sticky="ew", pady=(0, 6))
+        self.test_button = ttk.Button(live_actions, text="Teste de fala", command=self._trigger_test)
+        self.test_button.grid(row=1, column=0, sticky="ew", pady=4)
+        self.calibrate_button = ttk.Button(live_actions, text="Calibrar ruido ambiente", command=self._start_calibration)
+        self.calibrate_button.grid(row=2, column=0, sticky="ew", pady=4)
+        ttk.Button(live_actions, text="Ativar modo live", command=self._enable_live_mode, style="Primary.TButton").grid(row=3, column=0, sticky="ew", pady=(8, 0))
 
-        ttk.Label(self.settings_frame, text="Microfone", style="Body.TLabel").grid(row=28, column=0, sticky="w", pady=(12, 4))
+        profile_frame = ttk.LabelFrame(self.live_tab, text="Perfil", padding=12)
+        profile_frame.grid(row=1, column=0, sticky="ew", pady=(0, 10))
+        profile_frame.columnconfigure(0, weight=1)
+        self.profile_var = tk.StringVar(value=self.settings.active_profile)
+        self.profile_select = ttk.Combobox(profile_frame, textvariable=self.profile_var, values=self._profile_names(), state="readonly")
+        self.profile_select.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 6))
+        self.profile_select.bind("<<ComboboxSelected>>", lambda _event: self._load_profile(self.profile_var.get()))
+        ttk.Button(profile_frame, text="Salvar perfil", command=self._save_profile).grid(row=1, column=0, sticky="ew", padx=(0, 4))
+        ttk.Button(profile_frame, text="Novo", command=self._new_profile).grid(row=1, column=1, sticky="ew", padx=(4, 0))
+
+        expression_frame = ttk.LabelFrame(self.live_tab, text="Expressoes", padding=12)
+        expression_frame.grid(row=2, column=0, sticky="ew")
+        expression_frame.columnconfigure(0, weight=1)
+        self.expression_select = ttk.Combobox(expression_frame, textvariable=self.expression_var, values=self._expression_names(), state="readonly")
+        self.expression_select.grid(row=0, column=0, sticky="ew", pady=(0, 6))
+        self.expression_select.bind("<<ComboboxSelected>>", lambda _event: self._load_expression(self.expression_var.get()))
+        ttk.Button(expression_frame, text="Salvar expressao atual", command=self._save_expression).grid(row=1, column=0, sticky="ew", pady=(0, 6))
+        ttk.Button(expression_frame, text="Nova expressao", command=self._new_expression).grid(row=2, column=0, sticky="ew")
+
+        avatar_assets = ttk.LabelFrame(self.assets_tab, text="Avatar", padding=12)
+        avatar_assets.grid(row=0, column=0, sticky="ew", pady=(0, 10))
+        avatar_assets.columnconfigure(0, weight=1)
+        self.idle_button = ttk.Button(avatar_assets, text="Escolher imagens idle", command=self._choose_idle_images)
+        self.idle_button.grid(row=0, column=0, sticky="ew", pady=4)
+        self.speaking_button = ttk.Button(avatar_assets, text="Escolher fala padrao", command=self._choose_speaking_images)
+        self.speaking_button.grid(row=1, column=0, sticky="ew", pady=4)
+        self.speaking_levels_button = ttk.Button(avatar_assets, text="Escolher fala baixa/media/alta", command=self._choose_level_images)
+        self.speaking_levels_button.grid(row=2, column=0, sticky="ew", pady=4)
+        self.blink_button = ttk.Button(avatar_assets, text="Escolher piscar", command=self._choose_blink_images)
+        self.blink_button.grid(row=3, column=0, sticky="ew", pady=4)
+
+        pet_assets = ttk.LabelFrame(self.assets_tab, text="Pet", padding=12)
+        pet_assets.grid(row=1, column=0, sticky="ew", pady=(0, 10))
+        pet_assets.columnconfigure(0, weight=1)
+        self.pet_button = ttk.Button(pet_assets, text="Escolher GIF/PNG do pet", command=self._choose_pet_images)
+        self.pet_button.grid(row=0, column=0, sticky="ew", pady=4)
+        self.pet_states_button = ttk.Button(pet_assets, text="Escolher pet fala/alto", command=self._choose_pet_state_images)
+        self.pet_states_button.grid(row=1, column=0, sticky="ew", pady=4)
+        self.clear_pet_button = ttk.Button(pet_assets, text="Limpar pet", command=self._clear_pet_images)
+        self.clear_pet_button.grid(row=2, column=0, sticky="ew", pady=4)
+
+        library_frame = ttk.LabelFrame(self.assets_tab, text="Biblioteca", padding=12)
+        library_frame.grid(row=2, column=0, sticky="ew")
+        library_frame.columnconfigure(0, weight=1)
+        self.import_folder_button = ttk.Button(library_frame, text="Importar pasta de avatar", command=self._import_avatar_folder)
+        self.import_folder_button.grid(row=0, column=0, sticky="ew", pady=4)
+        pack_row = ttk.Frame(library_frame)
+        pack_row.grid(row=1, column=0, sticky="ew", pady=4)
+        pack_row.columnconfigure(0, weight=1)
+        pack_row.columnconfigure(1, weight=1)
+        ttk.Button(pack_row, text="Importar .avatarpack", command=self._import_pack).grid(row=0, column=0, sticky="ew", padx=(0, 4))
+        ttk.Button(pack_row, text="Exportar", command=self._export_pack).grid(row=0, column=1, sticky="ew", padx=(4, 0))
+        self.clear_images_button = ttk.Button(library_frame, text="Limpar imagens do avatar", command=self._clear_images)
+        self.clear_images_button.grid(row=2, column=0, sticky="ew", pady=4)
+
+        audio_frame = ttk.LabelFrame(self.tuning_tab, text="Audio e fala", padding=12)
+        audio_frame.grid(row=0, column=0, sticky="ew", pady=(0, 10))
+        audio_frame.columnconfigure(0, weight=1)
+        self._add_slider_to(audio_frame, "Sensibilidade", self.sensitivity_var, 0.04, 0.7, 0)
+        self._add_slider_to(audio_frame, "Suavizacao", self.smoothing_var, 0.1, 0.95, 1)
+        self._add_slider_to(audio_frame, "Segurar boca", self.mouth_hold_var, 1, 18, 2)
+        ttk.Label(audio_frame, text="Microfone", style="Body.TLabel").grid(row=6, column=0, sticky="w", pady=(12, 4))
         self.input_devices = MicrophoneInput.list_input_devices()
         self.microphone_names = [name for name, _index in self.input_devices]
         current_device = next((name for name, index in self.input_devices if index == self.settings.microphone_device), self.microphone_names[0])
         self.microphone_var = tk.StringVar(value=current_device)
-        self.microphone_select = ttk.Combobox(self.settings_frame, textvariable=self.microphone_var, values=self.microphone_names, state="readonly")
-        self.microphone_select.grid(row=29, column=0, sticky="ew")
+        self.microphone_select = ttk.Combobox(audio_frame, textvariable=self.microphone_var, values=self.microphone_names, state="readonly")
+        self.microphone_select.grid(row=7, column=0, sticky="ew")
         self.microphone_select.bind("<<ComboboxSelected>>", lambda _event: self._change_microphone())
 
-        ttk.Label(self.settings_frame, text="Preset performance", style="Body.TLabel").grid(row=30, column=0, sticky="w", pady=(12, 4))
-        self.performance_preset_select = ttk.Combobox(
-            self.settings_frame,
-            textvariable=self.performance_preset_var,
-            values=("quality", "balanced", "performance", "ultra"),
+        avatar_frame = ttk.LabelFrame(self.tuning_tab, text="Avatar", padding=12)
+        avatar_frame.grid(row=1, column=0, sticky="ew", pady=(0, 10))
+        avatar_frame.columnconfigure(0, weight=1)
+        self._add_slider_to(avatar_frame, "FPS da animacao", self.animation_fps_var, 1, 30, 0)
+        self._add_slider_to(avatar_frame, "Escala avatar", self.avatar_scale_var, 0.25, 2.5, 1)
+        self._add_slider_to(avatar_frame, "Posicao X", self.avatar_x_var, -0.8, 0.8, 2)
+        self._add_slider_to(avatar_frame, "Posicao Y", self.avatar_y_var, -0.8, 0.8, 3)
+        ttk.Checkbutton(avatar_frame, text="Movimento vertical automatico", variable=self.idle_motion_var, command=self._save_settings).grid(row=8, column=0, sticky="w", pady=(8, 0))
+        ttk.Checkbutton(avatar_frame, text="Sombra do avatar", variable=self.avatar_shadow_var, command=self._save_settings).grid(row=9, column=0, sticky="w", pady=(8, 0))
+
+        pet_frame = ttk.LabelFrame(self.tuning_tab, text="Pet", padding=12)
+        pet_frame.grid(row=2, column=0, sticky="ew")
+        pet_frame.columnconfigure(0, weight=1)
+        self._add_slider_to(pet_frame, "Tamanho do pet", self.pet_size_var, 0.45, 1.6, 0)
+        self._add_slider_to(pet_frame, "Pet posicao X", self.pet_x_var, -0.9, 0.9, 1)
+        self._add_slider_to(pet_frame, "Pet posicao Y", self.pet_y_var, -0.9, 0.9, 2)
+        self._add_slider_to(pet_frame, "Forca reacao pet", self.pet_strength_var, 0.0, 1.0, 3)
+        self._add_slider_to(pet_frame, "Opacidade pet", self.pet_opacity_var, 0.1, 1.0, 4)
+        ttk.Label(pet_frame, text="Reacao do pet", style="Body.TLabel").grid(row=10, column=0, sticky="w", pady=(12, 4))
+        self.pet_reaction_select = ttk.Combobox(
+            pet_frame,
+            textvariable=self.pet_reaction_var,
+            values=("none", "bounce", "shake", "float", "speed", "bounce_speed", "shake_speed"),
             state="readonly",
         )
-        self.performance_preset_select.grid(row=31, column=0, sticky="ew")
-        self.performance_preset_select.bind("<<ComboboxSelected>>", lambda _event: self._apply_performance_preset())
-
-        ttk.Label(self.settings_frame, text="Fundo preview", style="Body.TLabel").grid(row=32, column=0, sticky="w", pady=(12, 4))
-        self.background_select = ttk.Combobox(
-            self.settings_frame,
-            textvariable=self.background_var,
-            values=("studio", "aurora", "grid", "clean"),
+        self.pet_reaction_select.grid(row=11, column=0, sticky="ew")
+        self.pet_reaction_select.bind("<<ComboboxSelected>>", lambda _event: self._save_settings())
+        ttk.Label(pet_frame, text="Camada do pet", style="Body.TLabel").grid(row=12, column=0, sticky="w", pady=(12, 4))
+        self.pet_layer_select = ttk.Combobox(
+            pet_frame,
+            textvariable=self.pet_layer_var,
+            values=("front", "back"),
             state="readonly",
         )
-        self.background_select.grid(row=33, column=0, sticky="ew")
-        self.background_select.bind("<<ComboboxSelected>>", lambda _event: self._save_settings())
+        self.pet_layer_select.grid(row=13, column=0, sticky="ew")
+        self.pet_layer_select.bind("<<ComboboxSelected>>", lambda _event: self._save_settings())
+        ttk.Checkbutton(pet_frame, text="Mostrar pet", variable=self.pet_enabled_var, command=self._save_settings).grid(row=14, column=0, sticky="w", pady=(8, 0))
+        ttk.Checkbutton(pet_frame, text="Espelhar pet", variable=self.pet_mirror_var, command=self._save_settings).grid(row=15, column=0, sticky="w", pady=(8, 0))
 
-        self.dark_check = ttk.Checkbutton(self.settings_frame, text="Modo escuro", variable=self.dark_var, command=self._toggle_theme_from_check)
-        self.dark_check.grid(row=34, column=0, sticky="w", pady=(14, 0))
-        self.performance_check = ttk.Checkbutton(self.settings_frame, text="Modo performance: pausar preview", variable=self.performance_var, command=self._save_settings)
-        self.performance_check.grid(row=35, column=0, sticky="w", pady=(8, 0))
-        ttk.Checkbutton(self.settings_frame, text="Movimento vertical automatico", variable=self.idle_motion_var, command=self._save_settings).grid(row=36, column=0, sticky="w", pady=(8, 0))
-        ttk.Checkbutton(self.settings_frame, text="Sombra do avatar", variable=self.avatar_shadow_var, command=self._save_settings).grid(row=37, column=0, sticky="w", pady=(8, 0))
-        ttk.Checkbutton(self.settings_frame, text="Mostrar pet", variable=self.pet_enabled_var, command=self._save_settings).grid(row=38, column=0, sticky="w", pady=(8, 0))
-        ttk.Checkbutton(self.settings_frame, text="Espelhar pet", variable=self.pet_mirror_var, command=self._save_settings).grid(row=39, column=0, sticky="w", pady=(8, 0))
-        ttk.Checkbutton(self.settings_frame, text="Iniciar minimizado", variable=self.auto_start_var, command=self._save_settings).grid(row=40, column=0, sticky="w", pady=(8, 0))
-        ttk.Checkbutton(self.settings_frame, text="Modo streamer seguro", variable=self.streamer_safe_var, command=self._save_settings).grid(row=41, column=0, sticky="w", pady=(8, 0))
-
-        self.expression_frame = ttk.LabelFrame(self.control_frame, text="Expressoes", padding=14)
-        self.expression_frame.grid(row=17, column=0, sticky="ew", pady=(10, 10))
-        self.expression_frame.columnconfigure(0, weight=1)
-        self.expression_select = ttk.Combobox(self.expression_frame, textvariable=self.expression_var, values=self._expression_names(), state="readonly")
-        self.expression_select.grid(row=0, column=0, sticky="ew", pady=(0, 6))
-        self.expression_select.bind("<<ComboboxSelected>>", lambda _event: self._load_expression(self.expression_var.get()))
-        ttk.Button(self.expression_frame, text="Salvar expressao atual", command=self._save_expression).grid(row=1, column=0, sticky="ew", pady=(0, 6))
-        ttk.Button(self.expression_frame, text="Nova expressao", command=self._new_expression).grid(row=2, column=0, sticky="ew")
-
-        self.obs_frame = ttk.LabelFrame(self.control_frame, text="OBS", padding=14)
-        self.obs_frame.grid(row=18, column=0, sticky="ew", pady=(10, 10))
-        self.obs_frame.columnconfigure(0, weight=1)
-
-        self.obs_button = ttk.Button(self.obs_frame, text="Abrir janela OBS", command=self._toggle_obs_window, style="Primary.TButton")
+        obs_capture = ttk.LabelFrame(self.obs_tab, text="Captura", padding=12)
+        obs_capture.grid(row=0, column=0, sticky="ew", pady=(0, 10))
+        obs_capture.columnconfigure(0, weight=1)
+        self.obs_button = ttk.Button(obs_capture, text="Abrir janela OBS", command=self._toggle_obs_window, style="Primary.TButton")
         self.obs_button.grid(row=0, column=0, sticky="ew", pady=(0, 8))
-
-        ttk.Label(self.obs_frame, text="Fundo da captura", style="Body.TLabel").grid(row=1, column=0, sticky="w", pady=(4, 4))
+        ttk.Label(obs_capture, text="Fundo da captura", style="Body.TLabel").grid(row=1, column=0, sticky="w", pady=(4, 4))
         self.obs_background_select = ttk.Combobox(
-            self.obs_frame,
+            obs_capture,
             textvariable=self.obs_background_var,
             values=tuple(OBS_BACKGROUNDS.keys()),
             state="readonly",
         )
         self.obs_background_select.grid(row=2, column=0, sticky="ew")
         self.obs_background_select.bind("<<ComboboxSelected>>", lambda _event: self._save_obs_settings())
-
-        self.obs_top_check = ttk.Checkbutton(
-            self.obs_frame,
-            text="Manter janela OBS no topo",
-            variable=self.obs_top_var,
-            command=self._save_obs_settings,
-        )
-        self.obs_top_check.grid(row=3, column=0, sticky="w", pady=(10, 0))
-
-        ttk.Label(self.obs_frame, text="Resolucao", style="Body.TLabel").grid(row=4, column=0, sticky="w", pady=(10, 4))
+        ttk.Label(obs_capture, text="Resolucao", style="Body.TLabel").grid(row=3, column=0, sticky="w", pady=(10, 4))
         self.obs_resolution_select = ttk.Combobox(
-            self.obs_frame,
+            obs_capture,
             textvariable=self.obs_resolution_var,
             values=("1280x720", "1920x1080", "1080x1920", "960x540", "640x360"),
             state="readonly",
         )
-        self.obs_resolution_select.grid(row=5, column=0, sticky="ew")
+        self.obs_resolution_select.grid(row=4, column=0, sticky="ew")
         self.obs_resolution_select.bind("<<ComboboxSelected>>", lambda _event: self._save_obs_settings())
+        ttk.Checkbutton(obs_capture, text="Manter janela OBS no topo", variable=self.obs_top_var, command=self._save_obs_settings).grid(row=5, column=0, sticky="w", pady=(10, 0))
+        ttk.Checkbutton(obs_capture, text="Janela OBS sem borda", variable=self.obs_borderless_var, command=self._save_obs_settings).grid(row=6, column=0, sticky="w", pady=(8, 0))
+        ttk.Checkbutton(obs_capture, text="Esconder controles ao abrir OBS", variable=self.auto_hide_var, command=self._save_obs_settings).grid(row=7, column=0, sticky="w", pady=(8, 0))
 
-        self.obs_borderless_check = ttk.Checkbutton(
-            self.obs_frame,
-            text="Janela OBS sem borda",
-            variable=self.obs_borderless_var,
-            command=self._save_obs_settings,
+        obs_actions = ttk.LabelFrame(self.obs_tab, text="Acoes", padding=12)
+        obs_actions.grid(row=1, column=0, sticky="ew")
+        obs_actions.columnconfigure(0, weight=1)
+        self.live_button = ttk.Button(obs_actions, text="Ativar modo live", command=self._enable_live_mode, style="Primary.TButton")
+        self.live_button.grid(row=0, column=0, sticky="ew", pady=(0, 6))
+        self.hide_button = ttk.Button(obs_actions, text="Ocultar controles", command=self._hide_controls)
+        self.hide_button.grid(row=1, column=0, sticky="ew", pady=4)
+        self.back_button = ttk.Button(obs_actions, text="Enviar OBS para tras", command=self._send_obs_to_back)
+        self.back_button.grid(row=2, column=0, sticky="ew", pady=4)
+        ttk.Button(obs_actions, text="Assistente OBS", command=self._show_obs_assistant).grid(row=3, column=0, sticky="ew", pady=(8, 0))
+
+        performance_frame = ttk.LabelFrame(self.system_tab, text="Performance e tema", padding=12)
+        performance_frame.grid(row=0, column=0, sticky="ew", pady=(0, 10))
+        performance_frame.columnconfigure(0, weight=1)
+        ttk.Label(performance_frame, text="Preset performance", style="Body.TLabel").grid(row=0, column=0, sticky="w", pady=(0, 4))
+        self.performance_preset_select = ttk.Combobox(
+            performance_frame,
+            textvariable=self.performance_preset_var,
+            values=("quality", "balanced", "performance", "ultra"),
+            state="readonly",
         )
-        self.obs_borderless_check.grid(row=6, column=0, sticky="w", pady=(8, 0))
-
-        self.auto_hide_check = ttk.Checkbutton(
-            self.obs_frame,
-            text="Esconder controles ao abrir OBS",
-            variable=self.auto_hide_var,
-            command=self._save_obs_settings,
+        self.performance_preset_select.grid(row=1, column=0, sticky="ew")
+        self.performance_preset_select.bind("<<ComboboxSelected>>", lambda _event: self._apply_performance_preset())
+        ttk.Label(performance_frame, text="Fundo preview", style="Body.TLabel").grid(row=2, column=0, sticky="w", pady=(12, 4))
+        self.background_select = ttk.Combobox(
+            performance_frame,
+            textvariable=self.background_var,
+            values=("studio", "aurora", "grid", "clean"),
+            state="readonly",
         )
-        self.auto_hide_check.grid(row=7, column=0, sticky="w", pady=(8, 0))
+        self.background_select.grid(row=3, column=0, sticky="ew")
+        self.background_select.bind("<<ComboboxSelected>>", lambda _event: self._save_settings())
+        ttk.Checkbutton(performance_frame, text="Modo escuro", variable=self.dark_var, command=self._toggle_theme_from_check).grid(row=4, column=0, sticky="w", pady=(14, 0))
+        ttk.Checkbutton(performance_frame, text="Modo performance: pausar preview", variable=self.performance_var, command=self._save_settings).grid(row=5, column=0, sticky="w", pady=(8, 0))
+        ttk.Checkbutton(performance_frame, text="Iniciar minimizado", variable=self.auto_start_var, command=self._save_settings).grid(row=6, column=0, sticky="w", pady=(8, 0))
+        ttk.Checkbutton(performance_frame, text="Modo streamer seguro", variable=self.streamer_safe_var, command=self._save_settings).grid(row=7, column=0, sticky="w", pady=(8, 0))
 
-        self.live_button = ttk.Button(self.obs_frame, text="Ativar modo live", command=self._enable_live_mode, style="Primary.TButton")
-        self.live_button.grid(row=8, column=0, sticky="ew", pady=(10, 0))
-        self.hide_button = ttk.Button(self.obs_frame, text="Ocultar controles", command=self._hide_controls)
-        self.hide_button.grid(row=9, column=0, sticky="ew", pady=(8, 0))
-        self.back_button = ttk.Button(self.obs_frame, text="Enviar OBS para tras", command=self._send_obs_to_back)
-        self.back_button.grid(row=10, column=0, sticky="ew", pady=(8, 0))
-        ttk.Button(self.obs_frame, text="Assistente OBS", command=self._show_obs_assistant).grid(row=11, column=0, sticky="ew", pady=(8, 0))
-
-        self.privacy_frame = ttk.LabelFrame(self.control_frame, text="Privacidade e diagnostico", padding=14)
-        self.privacy_frame.grid(row=19, column=0, sticky="ew", pady=(10, 10))
-        self.privacy_frame.columnconfigure(0, weight=1)
-        ttk.Button(self.privacy_frame, text="Abrir pasta de logs", command=self._open_logs).grid(row=0, column=0, sticky="ew", pady=(0, 6))
-        ttk.Button(self.privacy_frame, text="Apagar configuracoes locais", command=self._reset_privacy).grid(row=1, column=0, sticky="ew")
+        privacy_frame = ttk.LabelFrame(self.system_tab, text="Privacidade e diagnostico", padding=12)
+        privacy_frame.grid(row=1, column=0, sticky="ew")
+        privacy_frame.columnconfigure(0, weight=1)
+        ttk.Button(privacy_frame, text="Abrir pasta de logs", command=self._open_logs).grid(row=0, column=0, sticky="ew", pady=(0, 6))
+        ttk.Button(privacy_frame, text="Apagar configuracoes locais", command=self._reset_privacy).grid(row=1, column=0, sticky="ew")
 
         self.status_label = ttk.Label(self.control_frame, text="Microfone desligado", style="Status.TLabel")
-        self.status_label.grid(row=20, column=0, sticky="ew", pady=(10, 0))
+        self.status_label.grid(row=3, column=0, sticky="ew", pady=(12, 0))
         self.avatar_label = ttk.Label(
             self.control_frame,
             text="Assets carregados" if self.settings.streamer_safe else self._image_summary(),
             style="Body.TLabel",
         )
-        self.avatar_label.grid(row=21, column=0, sticky="w", pady=(8, 0))
+        self.avatar_label.grid(row=4, column=0, sticky="w", pady=(8, 0))
         hotkey_text = "Hotkeys: F8 mic, F9 teste, F10 controles, F11 OBS, F12 pet"
         if self.hotkeys.available:
             hotkey_text += " | globais ativos"
         self.hotkey_label = ttk.Label(self.control_frame, text=hotkey_text, style="Body.TLabel")
-        self.hotkey_label.grid(row=22, column=0, sticky="w", pady=(8, 0))
+        self.hotkey_label.grid(row=5, column=0, sticky="w", pady=(8, 0))
 
     def _sync_control_scroll(self, _event: tk.Event) -> None:
         self.control_canvas.configure(scrollregion=self.control_canvas.bbox("all"))
@@ -390,8 +402,11 @@ class AvatarCamApp(tk.Tk):
         self.control_canvas.itemconfigure(self.control_window, width=event.width)
 
     def _add_slider(self, label: str, variable: tk.DoubleVar, start: float, end: float, row: int) -> None:
-        ttk.Label(self.settings_frame, text=label, style="Body.TLabel").grid(row=row * 2, column=0, sticky="w", pady=(4, 4))
-        slider = ttk.Scale(self.settings_frame, from_=start, to=end, variable=variable, command=lambda _value: self._save_settings())
+        self._add_slider_to(self.tuning_tab, label, variable, start, end, row)
+
+    def _add_slider_to(self, parent: ttk.Frame, label: str, variable: tk.Variable, start: float, end: float, row: int) -> None:
+        ttk.Label(parent, text=label, style="Body.TLabel").grid(row=row * 2, column=0, sticky="w", pady=(4, 4))
+        slider = ttk.Scale(parent, from_=start, to=end, variable=variable, command=lambda _value: self._save_settings())
         slider.grid(row=row * 2 + 1, column=0, sticky="ew")
 
     def _apply_theme(self) -> None:
