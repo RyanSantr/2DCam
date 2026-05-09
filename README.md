@@ -19,6 +19,11 @@ Aplicacao desktop em Python onde sua camera e substituida por um avatar 2D anima
 - Estados de fala baixa, media e alta por volume.
 - Calibracao automatica do ruido ambiente.
 - Hotkeys: `F8`, `F9`, `F10`, `F11`.
+- Icone de bandeja do Windows com menu rapido.
+- Editor de escala e posicao do avatar.
+- Modo performance para pausar o preview do painel.
+- Logs locais rotativos para diagnostico.
+- Botao para apagar configuracoes, perfis, caminhos de imagens e logs.
 - Modo escuro/claro.
 - Fundo personalizavel.
 - Botao de teste de fala.
@@ -44,6 +49,7 @@ Aplicacao desktop em Python onde sua camera e substituida por um avatar 2D anima
 |   |-- audio
 |   |   |-- microphone.py
 |   |-- core
+|   |   |-- app_log.py
 |   |   |-- hotkeys.py
 |   |   |-- settings.py
 |   |   |-- speech_detector.py
@@ -51,6 +57,7 @@ Aplicacao desktop em Python onde sua camera e substituida por um avatar 2D anima
 |       |-- app_window.py
 |       |-- avatar_canvas.py
 |       |-- obs_window.py
+|       |-- tray.py
 |       |-- theme.py
 |-- scripts
     |-- run.bat
@@ -155,6 +162,17 @@ Quando possivel no Windows, o app registra esses atalhos como globais. Se o Wind
 
 Use **Calibrar ruido ambiente** antes da live. Fique em silencio por 3 segundos. O app mede o ruido do seu quarto, teclado e ventoinhas, depois ajusta a sensibilidade automaticamente.
 
+## Ajuste Visual
+
+Use os controles:
+
+- **Escala avatar** para aumentar ou diminuir a arte.
+- **Posicao X** para mover para esquerda/direita.
+- **Posicao Y** para mover para cima/baixo.
+- **Modo performance** para pausar o preview no painel principal e renderizar apenas a janela OBS.
+
+Esses ajustes tambem sao aplicados na janela **OBS Avatar Output**.
+
 ## Usar Com OBS
 
 1. Abra o `AvatarCam2D.exe`.
@@ -169,3 +187,26 @@ Use **Calibrar ruido ambiente** antes da live. Fique em silencio por 3 segundos.
 O app principal fica para controles e configuracoes. A janela **OBS Avatar Output** fica limpa, sem botoes, pronta para transmissao. Use **Modo live: ocultar controles** para esconder o painel durante jogos. Para restaurar os controles, foque a janela **OBS Avatar Output** e aperte `F10`.
 
 Para uma camera virtual real, ative a **OBS Virtual Camera** depois de compor a cena no OBS. Assim Discord, Zoom e outros apps podem receber a cena como camera.
+
+## Bandeja Do Windows
+
+Ao fechar a janela principal, o app tenta ficar na bandeja do Windows. Pelo menu da bandeja voce pode:
+
+- abrir controles;
+- mostrar/ocultar OBS;
+- ligar/desligar microfone;
+- sair do app.
+
+Se o Windows bloquear o tray, o app continua funcionando normalmente.
+
+## Privacidade E Logs
+
+O app processa audio e imagens localmente. Nada e enviado para internet.
+
+Os logs ficam em:
+
+```text
+%USERPROFILE%\.avatarcam_2d\logs
+```
+
+Use **Apagar configuracoes locais** para remover configuracoes, perfis, caminhos de imagens e logs.

@@ -52,6 +52,9 @@ class ObsOutputWindow(tk.Toplevel):
     def set_animation_fps(self, fps: int) -> None:
         self.canvas.set_animation_fps(fps)
 
+    def set_transform(self, scale: float, offset_x: float, offset_y: float) -> None:
+        self.canvas.set_transform(scale, offset_x, offset_y)
+
     def set_background(self, background: str) -> None:
         self.canvas.set_background(background)
 

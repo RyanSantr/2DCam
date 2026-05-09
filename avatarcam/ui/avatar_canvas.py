@@ -20,6 +20,9 @@ class AvatarCanvas(tk.Canvas):
         self.speaking_frames: dict[str, list[tk.PhotoImage]] = {"low": [], "mid": [], "high": []}
         self._fit_cache: dict[tuple[str, int, int, int], tk.PhotoImage] = {}
         self.animation_fps = 12
+        self.avatar_scale = 1.0
+        self.offset_x = 0.0
+        self.offset_y = 0.0
         self.speaking = False
         self.level = 0.0
         self.frame = 0
@@ -55,6 +58,13 @@ class AvatarCanvas(tk.Canvas):
     def set_animation_fps(self, fps: int) -> None:
         self.animation_fps = max(1, min(30, fps))
 
+    def set_transform(self, scale: float, offset_x: float, offset_y: float) -> None:
+        self.avatar_scale = max(0.2, min(3.0, scale))
+        self.offset_x = max(-0.8, min(0.8, offset_x))
+        self.offset_y = max(-0.8, min(0.8, offset_y))
+        self._fit_cache.clear()
+        self.draw()
+
     def set_background(self, background: str) -> None:
         self.background = background
         self.draw()
@@ -73,11 +83,11 @@ class AvatarCanvas(tk.Canvas):
         self.delete("all")
         w = max(1, self.winfo_width())
         h = max(1, self.winfo_height())
-        cx = w / 2
-        scale = min(w / 430, h / 520)
+        cx = w / 2 + (w * self.offset_x * 0.5)
+        scale = min(w / 430, h / 520) * self.avatar_scale
         idle_bob = math.sin(self.frame / 18) * 5 * scale
         talk_bounce = min(1.0, self.level * 3) * 9 * scale if self.speaking else 0
-        cy = h * 0.55 + idle_bob - talk_bounce
+        cy = h * 0.55 + (h * self.offset_y * 0.5) + idle_bob - talk_bounce
 
         self._draw_background(w, h)
         if self._draw_custom_image(cx, cy):
@@ -135,8 +145,8 @@ class AvatarCanvas(tk.Canvas):
     def _fit_image(self, image: tk.PhotoImage) -> tk.PhotoImage:
         w = max(1, self.winfo_width())
         h = max(1, self.winfo_height())
-        max_w = max(1, int(w * 0.86))
-        max_h = max(1, int(h * 0.86))
+        max_w = max(1, int(w * 0.86 * self.avatar_scale))
+        max_h = max(1, int(h * 0.86 * self.avatar_scale))
         iw = max(1, image.width())
         ih = max(1, image.height())
 

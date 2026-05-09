@@ -5,6 +5,7 @@ import json
 
 APP_DIR = Path.home() / ".avatarcam_2d"
 SETTINGS_FILE = APP_DIR / "settings.json"
+LOG_DIR = APP_DIR / "logs"
 
 
 @dataclass
@@ -27,6 +28,10 @@ class Settings:
     profiles: dict | None = None
     obs_resolution: str = "1280x720"
     obs_borderless: bool = False
+    avatar_scale: float = 1.0
+    avatar_offset_x: float = 0.0
+    avatar_offset_y: float = 0.0
+    performance_mode: bool = False
 
     @classmethod
     def load(cls) -> "Settings":
