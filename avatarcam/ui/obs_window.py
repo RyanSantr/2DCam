@@ -60,12 +60,18 @@ class ObsOutputWindow(tk.Toplevel):
 
     def set_always_on_top(self, enabled: bool) -> None:
         self.attributes("-topmost", bool(enabled))
+        if not enabled:
+            self.lower()
 
     def set_borderless(self, enabled: bool) -> None:
         self.overrideredirect(bool(enabled))
 
     def set_resolution(self, resolution: str) -> None:
         self.geometry(resolution)
+
+    def send_to_back(self) -> None:
+        self.attributes("-topmost", False)
+        self.lower()
 
     def update_state(self, speaking: bool, level: float) -> None:
         self.canvas.update_state(speaking, level)

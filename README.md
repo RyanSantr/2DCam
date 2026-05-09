@@ -33,6 +33,7 @@ Aplicacao desktop em Python onde sua camera e substituida por um avatar 2D anima
 - Janela OBS com resolucoes 16:9 e vertical.
 - Opcao de janela OBS sem borda.
 - Modo live para esconder controles e deixar so a janela de captura.
+- Botao para enviar a janela OBS para tras das outras janelas.
 - Processamento local: sem upload de audio, imagem ou configuracao.
 - Estrutura separada por modulos.
 - Script para gerar `.exe` no Windows.
@@ -184,7 +185,16 @@ Esses ajustes tambem sao aplicados na janela **OBS Avatar Output**.
 6. Para remover o fundo, adicione o filtro **Chroma Key** na fonte.
 7. Use a cor do fundo selecionado no app, por exemplo `chroma_green`.
 
-O app principal fica para controles e configuracoes. A janela **OBS Avatar Output** fica limpa, sem botoes, pronta para transmissao. Use **Modo live: ocultar controles** para esconder o painel durante jogos. Para restaurar os controles, foque a janela **OBS Avatar Output** e aperte `F10`.
+O app principal fica para controles e configuracoes. A janela **OBS Avatar Output** fica limpa, sem botoes, pronta para transmissao.
+
+Para jogar sem atrapalhar:
+
+1. Abra a janela OBS.
+2. Desmarque **Manter janela OBS no topo**.
+3. Clique em **Modo live: ocultar controles** ou **Enviar OBS para tras**.
+4. Abra o jogo normalmente.
+
+O app continua rodando e o OBS continua capturando a janela. Para restaurar os controles, foque a janela **OBS Avatar Output** e aperte `F10`, ou use o menu da bandeja do Windows.
 
 Para uma camera virtual real, ative a **OBS Virtual Camera** depois de compor a cena no OBS. Assim Discord, Zoom e outros apps podem receber a cena como camera.
 

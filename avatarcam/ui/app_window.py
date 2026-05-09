@@ -242,6 +242,8 @@ class AvatarCamApp(tk.Tk):
 
         self.hide_button = ttk.Button(self.obs_frame, text="Modo live: ocultar controles", command=self._hide_controls)
         self.hide_button.grid(row=8, column=0, sticky="ew", pady=(10, 0))
+        self.back_button = ttk.Button(self.obs_frame, text="Enviar OBS para tras", command=self._send_obs_to_back)
+        self.back_button.grid(row=9, column=0, sticky="ew", pady=(8, 0))
 
         self.privacy_frame = ttk.LabelFrame(self.control_frame, text="Privacidade e diagnostico", padding=14)
         self.privacy_frame.grid(row=13, column=0, sticky="ew", pady=(10, 10))
@@ -568,7 +570,8 @@ class AvatarCamApp(tk.Tk):
             )
         else:
             self.obs_window.deiconify()
-            self.obs_window.lift()
+            if self.settings.obs_always_on_top:
+                self.obs_window.lift()
 
         self.obs_button.configure(text="Ocultar janela OBS")
         if self.settings.auto_hide_controls:
@@ -592,7 +595,17 @@ class AvatarCamApp(tk.Tk):
     def _hide_controls(self) -> None:
         if not self.obs_window or not self.obs_window.winfo_exists() or self.obs_window.state() == "withdrawn":
             self._toggle_obs_window()
+        self._send_obs_to_back(save=True)
         self.withdraw()
+
+    def _send_obs_to_back(self, save: bool = False) -> None:
+        self.obs_top_var.set(False)
+        self.settings.obs_always_on_top = False
+        if self.obs_window and self.obs_window.winfo_exists():
+            self.obs_window.send_to_back()
+        if save:
+            self.settings.save()
+        self.status_label.configure(text="OBS rodando atras das janelas")
 
     def show_controls(self) -> None:
         self.deiconify()
