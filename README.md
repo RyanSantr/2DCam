@@ -25,6 +25,9 @@ Aplicacao desktop em Python onde sua camera e substituida por um avatar 2D anima
 - Icone de bandeja do Windows com menu rapido.
 - Editor de escala e posicao do avatar.
 - Modo performance para pausar o preview do painel.
+- Presets de performance: quality, balanced, performance e ultra.
+- Seletor de dispositivo de microfone.
+- Cache de imagens otimizadas ao importar avatar.
 - Movimento vertical automatico liga/desliga.
 - Sombra simples do avatar liga/desliga.
 - Logs locais rotativos para diagnostico.
@@ -148,6 +151,8 @@ Ao importar uma pasta, o app copia as imagens para:
 
 Assim o avatar continua funcionando mesmo se voce mover ou apagar a pasta original.
 
+Durante a importacao, imagens PNG grandes sao otimizadas para reduzir custo de renderizacao. O arquivo original do usuario nao e alterado.
+
 ## Usar Suas Proprias Artes
 
 O app nao depende mais de avatar pronto. Voce escolhe arquivos locais para cada estado:
@@ -193,6 +198,7 @@ Use os controles:
 - **Posicao X** para mover para esquerda/direita.
 - **Posicao Y** para mover para cima/baixo.
 - **Modo performance** para pausar o preview no painel principal e renderizar apenas a janela OBS.
+- **Preset performance** para escolher entre qualidade e baixo uso de CPU.
 - **Movimento vertical automatico** para ligar/desligar o sobe e desce do avatar.
 - **Sombra do avatar** para dar leitura melhor no OBS.
 

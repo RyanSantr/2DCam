@@ -32,6 +32,7 @@ class AvatarCamApp(tk.Tk):
         self.settings = Settings.load()
         self.colors = DARK if self.settings.dark_mode else LIGHT
         self.microphone = MicrophoneInput()
+        self.microphone.set_device(self.settings.microphone_device)
         self.detector = SpeechDetector(self.settings.sensitivity, self.settings.smoothing)
         self.test_ticks = 0
         self.calibration_samples: list[float] = []
@@ -177,6 +178,7 @@ class AvatarCamApp(tk.Tk):
         self.avatar_x_var = tk.DoubleVar(value=self.settings.avatar_offset_x)
         self.avatar_y_var = tk.DoubleVar(value=self.settings.avatar_offset_y)
         self.performance_var = tk.BooleanVar(value=self.settings.performance_mode)
+        self.performance_preset_var = tk.StringVar(value=self.settings.performance_preset)
         self.idle_motion_var = tk.BooleanVar(value=self.settings.idle_motion)
         self.avatar_shadow_var = tk.BooleanVar(value=self.settings.avatar_shadow)
         self.streamer_safe_var = tk.BooleanVar(value=self.settings.streamer_safe)
@@ -188,23 +190,42 @@ class AvatarCamApp(tk.Tk):
         self._add_slider("Posicao X", self.avatar_x_var, -0.8, 0.8, 4)
         self._add_slider("Posicao Y", self.avatar_y_var, -0.8, 0.8, 5)
 
-        ttk.Label(self.settings_frame, text="Fundo preview", style="Body.TLabel").grid(row=12, column=0, sticky="w", pady=(12, 4))
+        ttk.Label(self.settings_frame, text="Microfone", style="Body.TLabel").grid(row=12, column=0, sticky="w", pady=(12, 4))
+        self.input_devices = MicrophoneInput.list_input_devices()
+        self.microphone_names = [name for name, _index in self.input_devices]
+        current_device = next((name for name, index in self.input_devices if index == self.settings.microphone_device), self.microphone_names[0])
+        self.microphone_var = tk.StringVar(value=current_device)
+        self.microphone_select = ttk.Combobox(self.settings_frame, textvariable=self.microphone_var, values=self.microphone_names, state="readonly")
+        self.microphone_select.grid(row=13, column=0, sticky="ew")
+        self.microphone_select.bind("<<ComboboxSelected>>", lambda _event: self._change_microphone())
+
+        ttk.Label(self.settings_frame, text="Preset performance", style="Body.TLabel").grid(row=14, column=0, sticky="w", pady=(12, 4))
+        self.performance_preset_select = ttk.Combobox(
+            self.settings_frame,
+            textvariable=self.performance_preset_var,
+            values=("quality", "balanced", "performance", "ultra"),
+            state="readonly",
+        )
+        self.performance_preset_select.grid(row=15, column=0, sticky="ew")
+        self.performance_preset_select.bind("<<ComboboxSelected>>", lambda _event: self._apply_performance_preset())
+
+        ttk.Label(self.settings_frame, text="Fundo preview", style="Body.TLabel").grid(row=16, column=0, sticky="w", pady=(12, 4))
         self.background_select = ttk.Combobox(
             self.settings_frame,
             textvariable=self.background_var,
             values=("studio", "aurora", "grid", "clean"),
             state="readonly",
         )
-        self.background_select.grid(row=13, column=0, sticky="ew")
+        self.background_select.grid(row=17, column=0, sticky="ew")
         self.background_select.bind("<<ComboboxSelected>>", lambda _event: self._save_settings())
 
         self.dark_check = ttk.Checkbutton(self.settings_frame, text="Modo escuro", variable=self.dark_var, command=self._toggle_theme_from_check)
-        self.dark_check.grid(row=14, column=0, sticky="w", pady=(14, 0))
+        self.dark_check.grid(row=18, column=0, sticky="w", pady=(14, 0))
         self.performance_check = ttk.Checkbutton(self.settings_frame, text="Modo performance: pausar preview", variable=self.performance_var, command=self._save_settings)
-        self.performance_check.grid(row=15, column=0, sticky="w", pady=(8, 0))
-        ttk.Checkbutton(self.settings_frame, text="Movimento vertical automatico", variable=self.idle_motion_var, command=self._save_settings).grid(row=16, column=0, sticky="w", pady=(8, 0))
-        ttk.Checkbutton(self.settings_frame, text="Sombra do avatar", variable=self.avatar_shadow_var, command=self._save_settings).grid(row=17, column=0, sticky="w", pady=(8, 0))
-        ttk.Checkbutton(self.settings_frame, text="Modo streamer seguro", variable=self.streamer_safe_var, command=self._save_settings).grid(row=18, column=0, sticky="w", pady=(8, 0))
+        self.performance_check.grid(row=19, column=0, sticky="w", pady=(8, 0))
+        ttk.Checkbutton(self.settings_frame, text="Movimento vertical automatico", variable=self.idle_motion_var, command=self._save_settings).grid(row=20, column=0, sticky="w", pady=(8, 0))
+        ttk.Checkbutton(self.settings_frame, text="Sombra do avatar", variable=self.avatar_shadow_var, command=self._save_settings).grid(row=21, column=0, sticky="w", pady=(8, 0))
+        ttk.Checkbutton(self.settings_frame, text="Modo streamer seguro", variable=self.streamer_safe_var, command=self._save_settings).grid(row=22, column=0, sticky="w", pady=(8, 0))
 
         self.expression_frame = ttk.LabelFrame(self.control_frame, text="Expressoes", padding=14)
         self.expression_frame.grid(row=13, column=0, sticky="ew", pady=(10, 10))
@@ -372,6 +393,41 @@ class AvatarCamApp(tk.Tk):
 
         self.mic_button.configure(text="Desativar microfone")
         self.status_label.configure(text="Ouvindo microfone")
+
+    def _change_microphone(self) -> None:
+        selected = self.microphone_var.get()
+        device_index = next((index for name, index in self.input_devices if name == selected), None)
+        self.settings.microphone_device = device_index
+        try:
+            self.microphone.set_device(device_index)
+        except Exception as exc:
+            self.log.exception("Falha ao trocar microfone")
+            messagebox.showerror("Microfone", f"Nao foi possivel trocar microfone:\n{exc}")
+            return
+        self.settings.save()
+        self.status_label.configure(text=f"Microfone: {selected}")
+
+    def _apply_performance_preset(self) -> None:
+        preset = self.performance_preset_var.get()
+        if preset == "quality":
+            self.performance_var.set(False)
+            self.animation_fps_var.set(18)
+            self.avatar_shadow_var.set(True)
+        elif preset == "balanced":
+            self.performance_var.set(False)
+            self.animation_fps_var.set(8)
+            self.avatar_shadow_var.set(True)
+        elif preset == "performance":
+            self.performance_var.set(True)
+            self.animation_fps_var.set(6)
+            self.avatar_shadow_var.set(False)
+            self.idle_motion_var.set(False)
+        elif preset == "ultra":
+            self.performance_var.set(True)
+            self.animation_fps_var.set(4)
+            self.avatar_shadow_var.set(False)
+            self.idle_motion_var.set(False)
+        self._save_settings()
 
     def _choose_idle_images(self) -> None:
         paths = self._pick_images("Escolha imagens idle")
@@ -668,6 +724,7 @@ class AvatarCamApp(tk.Tk):
         self.settings.avatar_offset_x = float(self.avatar_x_var.get())
         self.settings.avatar_offset_y = float(self.avatar_y_var.get())
         self.settings.performance_mode = self.performance_var.get()
+        self.settings.performance_preset = self.performance_preset_var.get()
         self.settings.idle_motion = self.idle_motion_var.get()
         self.settings.avatar_shadow = self.avatar_shadow_var.get()
         self.settings.streamer_safe = self.streamer_safe_var.get()
@@ -815,19 +872,23 @@ class AvatarCamApp(tk.Tk):
                 self.status_label.configure(text=f"Sensibilidade calibrada: {int(calibrated * 100)}%")
 
         speaking = state.speaking or self.test_ticks > 0
+        preset = self.settings.performance_preset
         if not self.settings.performance_mode and self.state() != "withdrawn":
             self.avatar_canvas.update_state(speaking, state.level)
         if self.obs_window and self.obs_window.winfo_exists() and self.obs_window.state() != "withdrawn":
-            self.obs_window.update_state(speaking, state.level)
+            if preset != "ultra" or speaking != self.last_speaking or self.ui_tick % 2 == 0:
+                self.obs_window.update_state(speaking, state.level)
 
         percent = int(max(0.0, min(1.0, state.level)) * 100)
         self.ui_tick += 1
-        if self.ui_tick % 3 == 0 and abs(percent - self.last_volume_percent) >= 2:
+        ui_mod = 10 if preset == "ultra" else 6 if preset == "performance" else 3
+        if self.ui_tick % ui_mod == 0 and abs(percent - self.last_volume_percent) >= 2:
             self.volume_bar["value"] = percent
             self.volume_label.configure(text=f"{percent}%")
             self.last_volume_percent = percent
 
-        if self.microphone.is_running and (speaking != self.last_speaking or self.ui_tick % 15 == 0):
+        status_mod = 45 if preset in ("performance", "ultra") else 15
+        if self.microphone.is_running and (speaking != self.last_speaking or self.ui_tick % status_mod == 0):
             if self.calibration_ticks <= 0:
                 self.status_label.configure(text="Voz detectada" if speaking else f"Ouvindo microfone | FPS {self.render_fps}")
             self.last_speaking = speaking
@@ -845,7 +906,8 @@ class AvatarCamApp(tk.Tk):
             self.render_frames = 0
             self.last_fps_time = now
 
-        self.after(33, self._tick)
+        delay = 100 if preset == "ultra" else 50 if preset == "performance" else 33
+        self.after(delay, self._tick)
 
     def destroy(self) -> None:
         self.log.info("AvatarCam encerrado")

@@ -10,6 +10,7 @@ from avatarcam.core.settings import APP_DIR
 
 AVATAR_DIR = APP_DIR / "avatars"
 IMAGE_EXTS = {".png", ".gif"}
+MAX_IMAGE_SIDE = 1600
 
 
 def safe_name(name: str) -> str:
@@ -21,6 +22,23 @@ def images_from_folder(folder: Path) -> list[str]:
     if not folder.is_dir():
         return []
     return [str(path) for path in sorted(folder.iterdir()) if path.is_file() and path.suffix.lower() in IMAGE_EXTS]
+
+
+def copy_optimized_image(src: Path, dest: Path) -> None:
+    if src.suffix.lower() == ".gif":
+        shutil.copy2(src, dest)
+        return
+
+    try:
+        from PIL import Image
+
+        with Image.open(src) as image:
+            image.load()
+            if max(image.size) > MAX_IMAGE_SIDE:
+                image.thumbnail((MAX_IMAGE_SIDE, MAX_IMAGE_SIDE), Image.Resampling.LANCZOS)
+            image.save(dest, format="PNG", optimize=True)
+    except Exception:
+        shutil.copy2(src, dest)
 
 
 def import_avatar_folder(source: str, name: str) -> dict:
@@ -45,7 +63,9 @@ def import_avatar_folder(source: str, name: str) -> dict:
         dst_folder.mkdir(parents=True, exist_ok=True)
         if src_folder:
             for src in images_from_folder(src_folder):
-                shutil.copy2(src, dst_folder / Path(src).name)
+                src_path = Path(src)
+                destination = dst_folder / (src_path.stem + src_path.suffix.lower())
+                copy_optimized_image(src_path, destination)
         result[key] = images_from_folder(dst_folder)
 
     manifest = {"name": name, "folders": list(folders.keys())}

@@ -37,6 +37,8 @@ class Settings:
     idle_motion: bool = False
     avatar_shadow: bool = True
     streamer_safe: bool = False
+    microphone_device: int | None = None
+    performance_preset: str = "balanced"
 
     @classmethod
     def load(cls) -> "Settings":

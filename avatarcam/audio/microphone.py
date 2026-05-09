@@ -12,6 +12,7 @@ class MicrophoneInput:
     def __init__(self, samplerate: int = 44100, blocksize: int = 512) -> None:
         self.samplerate = samplerate
         self.blocksize = blocksize
+        self.device_index: int | None = None
         self._stream = None
         self._levels: queue.Queue[float] = queue.Queue(maxsize=3)
         self._sounddevice = None
@@ -33,6 +34,7 @@ class MicrophoneInput:
 
         self._sounddevice = sd
         self._stream = sd.RawInputStream(
+            device=self.device_index,
             channels=1,
             samplerate=self.samplerate,
             blocksize=self.blocksize,
@@ -40,6 +42,29 @@ class MicrophoneInput:
             callback=self._callback,
         )
         self._stream.start()
+
+    def set_device(self, device_index: int | None) -> None:
+        restart = self.is_running
+        if restart:
+            self.stop()
+        self.device_index = device_index
+        if restart:
+            self.start()
+
+    @staticmethod
+    def list_input_devices() -> list[tuple[str, int | None]]:
+        try:
+            import sounddevice as sd
+            devices = sd.query_devices()
+        except Exception:
+            return [("Padrao do sistema", None)]
+
+        result: list[tuple[str, int | None]] = [("Padrao do sistema", None)]
+        for index, device in enumerate(devices):
+            if int(device.get("max_input_channels", 0)) > 0:
+                name = str(device.get("name", f"Dispositivo {index}"))
+                result.append((f"{index}: {name}", index))
+        return result
 
     def stop(self) -> None:
         if self._stream is None:
