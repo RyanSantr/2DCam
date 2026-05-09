@@ -54,6 +54,11 @@ class Settings:
     pet_mirror: bool = False
     mouth_hold_ticks: int = 5
     auto_start_minimized: bool = False
+    chat_enabled: bool = False
+    chat_platform: str = "twitch"
+    chat_channel: str = ""
+    chat_commands_enabled: bool = True
+    chat_command_cooldown: int = 8
 
     @classmethod
     def load(cls) -> "Settings":
