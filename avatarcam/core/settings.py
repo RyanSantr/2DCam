@@ -42,6 +42,10 @@ class Settings:
     pet_enabled: bool = False
     pet_size: float = 0.85
     pet_images: list[str] | None = None
+    pet_offset_x: float = 0.72
+    pet_offset_y: float = 0.62
+    pet_reaction: str = "bounce"
+    pet_reaction_strength: float = 0.55
 
     @classmethod
     def load(cls) -> "Settings":

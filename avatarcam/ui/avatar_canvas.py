@@ -29,6 +29,10 @@ class AvatarCanvas(tk.Canvas):
         self.avatar_shadow = True
         self.pet_enabled = False
         self.pet_size = 0.85
+        self.pet_offset_x = 0.72
+        self.pet_offset_y = 0.62
+        self.pet_reaction = "bounce"
+        self.pet_reaction_strength = 0.55
         self.speaking = False
         self.level = 0.0
         self.frame = 0
@@ -87,6 +91,10 @@ class AvatarCanvas(tk.Canvas):
         avatar_shadow: bool,
         pet_enabled: bool | None = None,
         pet_size: float | None = None,
+        pet_offset_x: float | None = None,
+        pet_offset_y: float | None = None,
+        pet_reaction: str | None = None,
+        pet_reaction_strength: float | None = None,
     ) -> None:
         self.idle_motion = idle_motion
         self.avatar_shadow = avatar_shadow
@@ -94,6 +102,14 @@ class AvatarCanvas(tk.Canvas):
             self.pet_enabled = pet_enabled
         if pet_size is not None:
             self.pet_size = max(0.45, min(1.6, pet_size))
+        if pet_offset_x is not None:
+            self.pet_offset_x = max(-0.9, min(0.9, pet_offset_x))
+        if pet_offset_y is not None:
+            self.pet_offset_y = max(-0.9, min(0.9, pet_offset_y))
+        if pet_reaction is not None:
+            self.pet_reaction = pet_reaction
+        if pet_reaction_strength is not None:
+            self.pet_reaction_strength = max(0.0, min(1.0, pet_reaction_strength))
         self._last_signature = None
         self.draw()
 
@@ -128,6 +144,10 @@ class AvatarCanvas(tk.Canvas):
             self.background,
             self.pet_enabled,
             round(self.pet_size, 2),
+            round(self.pet_offset_x, 2),
+            round(self.pet_offset_y, 2),
+            self.pet_reaction,
+            round(self.pet_reaction_strength, 2),
             len(self.pet_frames),
         )
         if signature == self._last_signature:
@@ -254,106 +274,21 @@ class AvatarCanvas(tk.Canvas):
         )
 
     def _draw_pet(self, w: int, h: int, avatar_scale: float) -> None:
-        if not self.pet_enabled:
+        if not self.pet_enabled or not self.pet_frames:
             return
 
         base = max(0.55, min(1.35, avatar_scale)) * self.pet_size
         size = max(34, min(w, h) * 0.13 * base)
-        margin = max(12, size * 0.28)
-        t = self.frame
-        mood_cycle = (t // 180) % 4
+        x = w * (0.5 + self.pet_offset_x * 0.5)
+        y = h * (0.5 + self.pet_offset_y * 0.5)
         reacting = self.speaking and self.level > 0.08
-
-        x = w - margin - size * 0.7
-        y = h - margin - size * 0.55
-        if mood_cycle == 1:
-            y += math.sin(t / 5) * size * 0.10
-        elif mood_cycle == 2 and not reacting:
-            y += size * 0.10
-        elif mood_cycle == 3:
-            x += math.sin(t / 18) * size * 0.10
-
-        if reacting:
-            y -= min(1.0, self.level * 2.8) * size * 0.22
-
-        if self.pet_frames:
-            self._draw_pet_image(x, y, size, reacting)
-            return
-
-        blink = (t % 140) > 132
-        sleepy = mood_cycle == 2 and not reacting
-        happy = reacting or mood_cycle == 1
-        tail_angle = math.sin(t / (4 if reacting else 9)) * size * 0.22
-
-        shadow_y = y + size * 0.48
-        self.create_oval(
-            x - size * 0.7,
-            shadow_y - size * 0.09,
-            x + size * 0.72,
-            shadow_y + size * 0.08,
-            fill="#000000",
-            outline="",
-            stipple="gray50",
-        )
-
-        body = "#7dd3fc" if reacting else "#8bd7a8"
-        belly = "#f6f7db"
-        accent = "#283246"
-        ear = "#5dbb86"
-        if sleepy:
-            body = "#9aa8c7"
-            ear = "#7987a7"
-
-        self.create_line(
-            x + size * 0.50,
-            y + size * 0.04,
-            x + size * 0.78,
-            y - size * 0.16 + tail_angle,
-            x + size * 0.60,
-            y - size * 0.30 + tail_angle,
-            fill=accent,
-            width=max(2, int(size * 0.08)),
-            smooth=True,
-        )
-        self.create_oval(x - size * 0.58, y - size * 0.28, x + size * 0.58, y + size * 0.50, fill=body, outline=accent, width=max(1, int(size * 0.025)))
-        self.create_oval(x - size * 0.33, y - size * 0.05, x + size * 0.33, y + size * 0.45, fill=belly, outline="")
-        self.create_polygon(
-            x - size * 0.42,
-            y - size * 0.20,
-            x - size * 0.26,
-            y - size * 0.70,
-            x - size * 0.08,
-            y - size * 0.18,
-            fill=ear,
-            outline=accent,
-        )
-        self.create_polygon(
-            x + size * 0.42,
-            y - size * 0.20,
-            x + size * 0.26,
-            y - size * 0.70,
-            x + size * 0.08,
-            y - size * 0.18,
-            fill=ear,
-            outline=accent,
-        )
-        self.create_oval(x - size * 0.42, y - size * 0.58, x + size * 0.42, y + size * 0.08, fill=body, outline=accent, width=max(1, int(size * 0.025)))
-
-        if blink or sleepy:
-            self.create_line(x - size * 0.20, y - size * 0.25, x - size * 0.08, y - size * 0.25, fill=accent, width=max(1, int(size * 0.03)))
-            self.create_line(x + size * 0.08, y - size * 0.25, x + size * 0.20, y - size * 0.25, fill=accent, width=max(1, int(size * 0.03)))
-        else:
-            self.create_oval(x - size * 0.22, y - size * 0.31, x - size * 0.08, y - size * 0.16, fill=accent, outline="")
-            self.create_oval(x + size * 0.08, y - size * 0.31, x + size * 0.22, y - size * 0.16, fill=accent, outline="")
-
-        self.create_oval(x - size * 0.05, y - size * 0.13, x + size * 0.05, y - size * 0.04, fill=accent, outline="")
-        if happy:
-            self.create_arc(x - size * 0.17, y - size * 0.09, x + size * 0.17, y + size * 0.15, start=205, extent=130, outline=accent, width=max(1, int(size * 0.025)), style=tk.ARC)
-        else:
-            self.create_line(x - size * 0.10, y + size * 0.07, x + size * 0.10, y + size * 0.07, fill=accent, width=max(1, int(size * 0.025)))
+        self._draw_pet_image(x, y, size, reacting)
 
     def _draw_pet_image(self, x: float, y: float, size: float, reacting: bool) -> None:
-        step = max(1, int(30 / max(1, self.animation_fps)))
+        speed_bonus = 1
+        if reacting and self.pet_reaction in ("speed", "bounce_speed", "shake_speed"):
+            speed_bonus = 2
+        step = max(1, int(30 / max(1, self.animation_fps * speed_bonus)))
         image = self.pet_frames[(self.frame // step) % len(self.pet_frames)]
         image = self._fit_pet_image(image, size)
         if self.avatar_shadow:
@@ -365,8 +300,16 @@ class AvatarCanvas(tk.Canvas):
                 fill="#000000",
                 outline="",
             )
-        angle_offset = math.sin(self.frame / (5 if reacting else 12)) * size * 0.04
-        self.create_image(x + angle_offset, y, image=image, anchor=tk.CENTER)
+        if reacting:
+            intensity = min(1.0, self.level * 2.8) * self.pet_reaction_strength
+            if self.pet_reaction in ("bounce", "bounce_speed"):
+                y -= intensity * size * 0.42
+            elif self.pet_reaction in ("shake", "shake_speed"):
+                x += math.sin(self.frame * 1.7) * size * 0.16 * intensity
+                y += math.cos(self.frame * 1.1) * size * 0.08 * intensity
+            elif self.pet_reaction == "float":
+                y += math.sin(self.frame / 5) * size * 0.16 * intensity
+        self.create_image(x, y, image=image, anchor=tk.CENTER)
         self._last_drawn_pet_image = image
 
     def _fit_pet_image(self, image: tk.PhotoImage, size: float) -> tk.PhotoImage:

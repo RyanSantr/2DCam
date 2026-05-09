@@ -66,8 +66,21 @@ class ObsOutputWindow(tk.Toplevel):
         avatar_shadow: bool,
         pet_enabled: bool | None = None,
         pet_size: float | None = None,
+        pet_offset_x: float | None = None,
+        pet_offset_y: float | None = None,
+        pet_reaction: str | None = None,
+        pet_reaction_strength: float | None = None,
     ) -> None:
-        self.canvas.set_visual_options(idle_motion, avatar_shadow, pet_enabled, pet_size)
+        self.canvas.set_visual_options(
+            idle_motion,
+            avatar_shadow,
+            pet_enabled,
+            pet_size,
+            pet_offset_x,
+            pet_offset_y,
+            pet_reaction,
+            pet_reaction_strength,
+        )
 
     def set_background(self, background: str) -> None:
         self.canvas.set_background(background)
