@@ -6,6 +6,14 @@ if not exist ".venv\Scripts\python.exe" (
 )
 call ".venv\Scripts\activate.bat"
 pip install -r requirements.txt
-pyinstaller --noconfirm --clean --windowed --name AvatarCam2D --collect-binaries sounddevice --collect-data sounddevice app.py
+if errorlevel 1 (
+  echo Falha ao instalar dependencias.
+  exit /b 1
+)
+pyinstaller --noconfirm --clean --onefile --windowed --name AvatarCam2D --collect-binaries sounddevice --collect-data sounddevice app.py
+if errorlevel 1 (
+  echo Falha ao gerar o executavel.
+  exit /b 1
+)
 echo.
 echo Executavel gerado em dist\AvatarCam2D.exe
