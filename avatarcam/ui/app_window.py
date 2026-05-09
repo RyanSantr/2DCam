@@ -49,6 +49,7 @@ class AvatarCamApp(tk.Tk):
         self.speaking_low_images = list(self.settings.speaking_low_images or [])
         self.speaking_mid_images = list(self.settings.speaking_mid_images or [])
         self.speaking_high_images = list(self.settings.speaking_high_images or [])
+        self.pet_images = list(self.settings.pet_images or [])
         self.expression_var = tk.StringVar(value=self.settings.active_expression)
         self.hotkeys = HotkeyManager()
         self.tray = TrayController(self)
@@ -94,6 +95,7 @@ class AvatarCamApp(tk.Tk):
             self.speaking_mid_images,
             self.speaking_high_images,
         )
+        self.avatar_canvas.set_pet_images(self.pet_images)
         self.avatar_canvas.set_animation_fps(self.settings.animation_fps)
         self.avatar_canvas.set_background(self.settings.background)
         self.avatar_canvas.set_transform(
@@ -157,16 +159,20 @@ class AvatarCamApp(tk.Tk):
         self.pack_row.columnconfigure(0, weight=1)
         ttk.Button(self.pack_row, text="Importar .avatarpack", command=self._import_pack).grid(row=0, column=0, sticky="ew", padx=(0, 4))
         ttk.Button(self.pack_row, text="Exportar", command=self._export_pack).grid(row=0, column=1, sticky="ew")
+        self.pet_button = ttk.Button(self.control_frame, text="Escolher GIF/PNG do pet", command=self._choose_pet_images)
+        self.pet_button.grid(row=9, column=0, sticky="ew", pady=5)
+        self.clear_pet_button = ttk.Button(self.control_frame, text="Limpar pet", command=self._clear_pet_images)
+        self.clear_pet_button.grid(row=10, column=0, sticky="ew", pady=5)
         self.clear_images_button = ttk.Button(self.control_frame, text="Limpar imagens", command=self._clear_images)
-        self.clear_images_button.grid(row=9, column=0, sticky="ew", pady=5)
+        self.clear_images_button.grid(row=11, column=0, sticky="ew", pady=5)
 
         self.test_button = ttk.Button(self.control_frame, text="Teste de fala", command=self._trigger_test)
-        self.test_button.grid(row=10, column=0, sticky="ew", pady=5)
+        self.test_button.grid(row=12, column=0, sticky="ew", pady=5)
         self.calibrate_button = ttk.Button(self.control_frame, text="Calibrar ruido ambiente", command=self._start_calibration)
-        self.calibrate_button.grid(row=11, column=0, sticky="ew", pady=5)
+        self.calibrate_button.grid(row=13, column=0, sticky="ew", pady=5)
 
         self.settings_frame = ttk.LabelFrame(self.control_frame, text="Configuracoes", padding=14)
-        self.settings_frame.grid(row=12, column=0, sticky="ew", pady=(18, 10))
+        self.settings_frame.grid(row=14, column=0, sticky="ew", pady=(18, 10))
         self.settings_frame.columnconfigure(0, weight=1)
 
         self.sensitivity_var = tk.DoubleVar(value=self.settings.sensitivity)
@@ -237,7 +243,7 @@ class AvatarCamApp(tk.Tk):
         ttk.Checkbutton(self.settings_frame, text="Modo streamer seguro", variable=self.streamer_safe_var, command=self._save_settings).grid(row=25, column=0, sticky="w", pady=(8, 0))
 
         self.expression_frame = ttk.LabelFrame(self.control_frame, text="Expressoes", padding=14)
-        self.expression_frame.grid(row=13, column=0, sticky="ew", pady=(10, 10))
+        self.expression_frame.grid(row=15, column=0, sticky="ew", pady=(10, 10))
         self.expression_frame.columnconfigure(0, weight=1)
         self.expression_select = ttk.Combobox(self.expression_frame, textvariable=self.expression_var, values=self._expression_names(), state="readonly")
         self.expression_select.grid(row=0, column=0, sticky="ew", pady=(0, 6))
@@ -246,7 +252,7 @@ class AvatarCamApp(tk.Tk):
         ttk.Button(self.expression_frame, text="Nova expressao", command=self._new_expression).grid(row=2, column=0, sticky="ew")
 
         self.obs_frame = ttk.LabelFrame(self.control_frame, text="OBS", padding=14)
-        self.obs_frame.grid(row=14, column=0, sticky="ew", pady=(10, 10))
+        self.obs_frame.grid(row=16, column=0, sticky="ew", pady=(10, 10))
         self.obs_frame.columnconfigure(0, weight=1)
 
         self.obs_button = ttk.Button(self.obs_frame, text="Abrir janela OBS", command=self._toggle_obs_window, style="Primary.TButton")
@@ -303,24 +309,24 @@ class AvatarCamApp(tk.Tk):
         ttk.Button(self.obs_frame, text="Assistente OBS", command=self._show_obs_assistant).grid(row=10, column=0, sticky="ew", pady=(8, 0))
 
         self.privacy_frame = ttk.LabelFrame(self.control_frame, text="Privacidade e diagnostico", padding=14)
-        self.privacy_frame.grid(row=15, column=0, sticky="ew", pady=(10, 10))
+        self.privacy_frame.grid(row=17, column=0, sticky="ew", pady=(10, 10))
         self.privacy_frame.columnconfigure(0, weight=1)
         ttk.Button(self.privacy_frame, text="Abrir pasta de logs", command=self._open_logs).grid(row=0, column=0, sticky="ew", pady=(0, 6))
         ttk.Button(self.privacy_frame, text="Apagar configuracoes locais", command=self._reset_privacy).grid(row=1, column=0, sticky="ew")
 
         self.status_label = ttk.Label(self.control_frame, text="Microfone desligado", style="Status.TLabel")
-        self.status_label.grid(row=16, column=0, sticky="ew", pady=(10, 0))
+        self.status_label.grid(row=18, column=0, sticky="ew", pady=(10, 0))
         self.avatar_label = ttk.Label(
             self.control_frame,
             text="Assets carregados" if self.settings.streamer_safe else self._image_summary(),
             style="Body.TLabel",
         )
-        self.avatar_label.grid(row=17, column=0, sticky="w", pady=(8, 0))
+        self.avatar_label.grid(row=19, column=0, sticky="w", pady=(8, 0))
         hotkey_text = "Hotkeys: F8 mic, F9 teste, F10 controles, F11 OBS"
         if self.hotkeys.available:
             hotkey_text += " | globais ativos"
         self.hotkey_label = ttk.Label(self.control_frame, text=hotkey_text, style="Body.TLabel")
-        self.hotkey_label.grid(row=18, column=0, sticky="w", pady=(8, 0))
+        self.hotkey_label.grid(row=20, column=0, sticky="w", pady=(8, 0))
 
     def _sync_control_scroll(self, _event: tk.Event) -> None:
         self.control_canvas.configure(scrollregion=self.control_canvas.bbox("all"))
@@ -478,6 +484,7 @@ class AvatarCamApp(tk.Tk):
         self.speaking_low_images = imported["talk_low"]
         self.speaking_mid_images = imported["talk_mid"]
         self.speaking_high_images = imported["talk_high"]
+        self.pet_images = imported.get("pet", [])
 
         if not self.idle_images and not self.speaking_images:
             messagebox.showinfo("Pasta sem avatar", "Use subpastas idle e talk, ou idle e fala.")
@@ -526,6 +533,7 @@ class AvatarCamApp(tk.Tk):
         self.speaking_low_images = sets["talk_low"]
         self.speaking_mid_images = sets["talk_mid"]
         self.speaking_high_images = sets["talk_high"]
+        self.pet_images = sets.get("pet", [])
         settings = pack.get("settings", {})
         self.sensitivity_var.set(float(settings.get("sensitivity", self.sensitivity_var.get())))
         self.smoothing_var.set(float(settings.get("smoothing", self.smoothing_var.get())))
@@ -550,6 +558,7 @@ class AvatarCamApp(tk.Tk):
             "talk_low": self.speaking_low_images,
             "talk_mid": self.speaking_mid_images,
             "talk_high": self.speaking_high_images,
+            "pet": self.pet_images,
         }
 
     def _images_from_folder(self, folder: Path) -> list[str]:
@@ -564,6 +573,19 @@ class AvatarCamApp(tk.Tk):
         self.speaking_low_images = []
         self.speaking_mid_images = []
         self.speaking_high_images = []
+        self._save_image_sets()
+
+    def _choose_pet_images(self) -> None:
+        paths = self._pick_images("Escolha GIF ou PNG do pet")
+        if not paths:
+            return
+        self.pet_images = paths
+        self.pet_enabled_var.set(True)
+        self._save_settings()
+        self._save_image_sets()
+
+    def _clear_pet_images(self) -> None:
+        self.pet_images = []
         self._save_image_sets()
 
     def _pick_images(self, title: str) -> list[str]:
@@ -585,6 +607,7 @@ class AvatarCamApp(tk.Tk):
         self.settings.speaking_low_images = self.speaking_low_images
         self.settings.speaking_mid_images = self.speaking_mid_images
         self.settings.speaking_high_images = self.speaking_high_images
+        self.settings.pet_images = self.pet_images
         self.avatar_canvas.set_image_sets(
             self.idle_images,
             self.speaking_images,
@@ -592,6 +615,7 @@ class AvatarCamApp(tk.Tk):
             self.speaking_mid_images,
             self.speaking_high_images,
         )
+        self.avatar_canvas.set_pet_images(self.pet_images)
         self.avatar_canvas.set_transform(
             self.settings.avatar_scale,
             self.settings.avatar_offset_x,
@@ -605,12 +629,13 @@ class AvatarCamApp(tk.Tk):
                 self.speaking_mid_images,
                 self.speaking_high_images,
             )
+            self.obs_window.set_pet_images(self.pet_images)
         self.avatar_label.configure(text="Assets carregados" if self.settings.streamer_safe else self._image_summary())
         self.settings.save()
 
     def _image_summary(self) -> str:
         level_count = len(self.speaking_low_images) + len(self.speaking_mid_images) + len(self.speaking_high_images)
-        return f"Idle: {len(self.idle_images)} | Fala: {len(self.speaking_images)} | Niveis: {level_count}"
+        return f"Idle: {len(self.idle_images)} | Fala: {len(self.speaking_images)} | Niveis: {level_count} | Pet: {len(self.pet_images)}"
 
     def _save_profile(self) -> None:
         name = self.profile_var.get() or "Default"
@@ -621,6 +646,7 @@ class AvatarCamApp(tk.Tk):
             "speaking_low_images": self.speaking_low_images,
             "speaking_mid_images": self.speaking_mid_images,
             "speaking_high_images": self.speaking_high_images,
+            "pet_images": self.pet_images,
             "sensitivity": float(self.sensitivity_var.get()),
             "smoothing": float(self.smoothing_var.get()),
             "animation_fps": int(float(self.animation_fps_var.get())),
@@ -670,6 +696,7 @@ class AvatarCamApp(tk.Tk):
         self.speaking_low_images = list(expression.get("talk_low") or [])
         self.speaking_mid_images = list(expression.get("talk_mid") or [])
         self.speaking_high_images = list(expression.get("talk_high") or [])
+        self.pet_images = list(expression.get("pet") or self.pet_images)
         self.settings.active_expression = name
         self.expression_var.set(name)
         self._save_image_sets()
@@ -691,6 +718,7 @@ class AvatarCamApp(tk.Tk):
         self.speaking_low_images = list(profile.get("speaking_low_images") or [])
         self.speaking_mid_images = list(profile.get("speaking_mid_images") or [])
         self.speaking_high_images = list(profile.get("speaking_high_images") or [])
+        self.pet_images = list(profile.get("pet_images") or self.pet_images)
         self.sensitivity_var.set(float(profile.get("sensitivity", self.settings.sensitivity)))
         self.smoothing_var.set(float(profile.get("smoothing", self.settings.smoothing)))
         self.animation_fps_var.set(int(profile.get("animation_fps", self.settings.animation_fps)))
@@ -791,6 +819,7 @@ class AvatarCamApp(tk.Tk):
                 self.speaking_low_images,
                 self.speaking_mid_images,
                 self.speaking_high_images,
+                self.pet_images,
                 self.settings.obs_background,
                 self.settings.obs_always_on_top,
                 self.settings.animation_fps,

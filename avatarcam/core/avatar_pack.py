@@ -54,6 +54,7 @@ def import_avatar_folder(source: str, name: str) -> dict:
         "talk_low": ("talk_low", "fala_baixa"),
         "talk_mid": ("talk_mid", "fala_media"),
         "talk_high": ("talk_high", "fala_alta"),
+        "pet": ("pet",),
     }
 
     result = {}
@@ -113,5 +114,6 @@ def import_avatar_pack(pack_path: str) -> dict:
             "talk_low": images_from_folder(target / "talk_low"),
             "talk_mid": images_from_folder(target / "talk_mid"),
             "talk_high": images_from_folder(target / "talk_high"),
+            "pet": images_from_folder(target / "pet"),
         },
     }

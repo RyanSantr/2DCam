@@ -31,6 +31,7 @@ Aplicacao desktop em Python onde sua camera e substituida por um avatar 2D anima
 - Movimento vertical automatico liga/desliga.
 - Sombra simples do avatar liga/desliga.
 - Pet opcional com vida propria, reacoes a voz e animacao leve.
+- Pet customizado por GIF, PNG unico ou sequencia de imagens.
 - Logs locais rotativos para diagnostico.
 - Botao para apagar configuracoes, perfis, caminhos de imagens e logs.
 - Modo escuro/claro.
@@ -132,7 +133,9 @@ meu-avatar/
 |-- talk_mid/
 |   |-- 001.png
 |-- talk_high/
-    |-- 001.png
+|   |-- 001.png
+|-- pet/
+    |-- pet.gif
 ```
 
 Pastas em portugues tambem funcionam para fala:
@@ -204,6 +207,7 @@ Use os controles:
 - **Sombra do avatar** para dar leitura melhor no OBS.
 - **Pet com vida propria** para adicionar um companheiro animado que reage quando voce fala.
 - **Tamanho do pet** para ajustar o espaco dele na cena.
+- **Escolher GIF/PNG do pet** para trocar o pet padrao por sua propria arte.
 
 Esses ajustes tambem sao aplicados na janela **OBS Avatar Output**.
 

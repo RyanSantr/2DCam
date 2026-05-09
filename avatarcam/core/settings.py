@@ -41,6 +41,7 @@ class Settings:
     performance_preset: str = "balanced"
     pet_enabled: bool = False
     pet_size: float = 0.85
+    pet_images: list[str] | None = None
 
     @classmethod
     def load(cls) -> "Settings":

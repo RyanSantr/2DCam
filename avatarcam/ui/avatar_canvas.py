@@ -18,6 +18,8 @@ class AvatarCanvas(tk.Canvas):
         self.speaking_paths: dict[str, list[str]] = {"low": [], "mid": [], "high": []}
         self.idle_frames: list[tk.PhotoImage] = []
         self.speaking_frames: dict[str, list[tk.PhotoImage]] = {"low": [], "mid": [], "high": []}
+        self.pet_paths: list[str] = []
+        self.pet_frames: list[tk.PhotoImage] = []
         self._fit_cache: dict[tuple[str, int, int, int], tk.PhotoImage] = {}
         self.animation_fps = 12
         self.avatar_scale = 1.0
@@ -36,6 +38,13 @@ class AvatarCanvas(tk.Canvas):
 
     def set_avatar(self, avatar: dict) -> None:
         self.avatar = avatar
+        self.draw()
+
+    def set_pet_images(self, pet_paths: list[str]) -> None:
+        self.pet_paths = pet_paths
+        self.pet_frames = self._load_images(pet_paths)
+        self._fit_cache.clear()
+        self._last_signature = None
         self.draw()
 
     def set_image_sets(
@@ -119,6 +128,7 @@ class AvatarCanvas(tk.Canvas):
             self.background,
             self.pet_enabled,
             round(self.pet_size, 2),
+            len(self.pet_frames),
         )
         if signature == self._last_signature:
             return False
@@ -163,10 +173,22 @@ class AvatarCanvas(tk.Canvas):
         for path in paths:
             try:
                 if Path(path).is_file():
-                    frames.append(tk.PhotoImage(file=path))
+                    frames.extend(self._load_file_frames(path))
             except tk.TclError:
                 continue
         return frames
+
+    def _load_file_frames(self, path: str) -> list[tk.PhotoImage]:
+        if Path(path).suffix.lower() != ".gif":
+            return [tk.PhotoImage(file=path)]
+
+        frames: list[tk.PhotoImage] = []
+        for index in range(80):
+            try:
+                frames.append(tk.PhotoImage(file=path, format=f"gif -index {index}"))
+            except tk.TclError:
+                break
+        return frames or [tk.PhotoImage(file=path)]
 
     def _draw_custom_image(self, cx: float, cy: float) -> bool:
         frames = self._current_frames()
@@ -254,6 +276,10 @@ class AvatarCanvas(tk.Canvas):
         if reacting:
             y -= min(1.0, self.level * 2.8) * size * 0.22
 
+        if self.pet_frames:
+            self._draw_pet_image(x, y, size, reacting)
+            return
+
         blink = (t % 140) > 132
         sleepy = mood_cycle == 2 and not reacting
         happy = reacting or mood_cycle == 1
@@ -325,3 +351,34 @@ class AvatarCanvas(tk.Canvas):
             self.create_arc(x - size * 0.17, y - size * 0.09, x + size * 0.17, y + size * 0.15, start=205, extent=130, outline=accent, width=max(1, int(size * 0.025)), style=tk.ARC)
         else:
             self.create_line(x - size * 0.10, y + size * 0.07, x + size * 0.10, y + size * 0.07, fill=accent, width=max(1, int(size * 0.025)))
+
+    def _draw_pet_image(self, x: float, y: float, size: float, reacting: bool) -> None:
+        step = max(1, int(30 / max(1, self.animation_fps)))
+        image = self.pet_frames[(self.frame // step) % len(self.pet_frames)]
+        image = self._fit_pet_image(image, size)
+        if self.avatar_shadow:
+            self.create_oval(
+                x - image.width() * 0.36,
+                y + image.height() * 0.34,
+                x + image.width() * 0.36,
+                y + image.height() * 0.46,
+                fill="#000000",
+                outline="",
+            )
+        angle_offset = math.sin(self.frame / (5 if reacting else 12)) * size * 0.04
+        self.create_image(x + angle_offset, y, image=image, anchor=tk.CENTER)
+        self._last_drawn_pet_image = image
+
+    def _fit_pet_image(self, image: tk.PhotoImage, size: float) -> tk.PhotoImage:
+        max_w = max(1, int(size * 1.5))
+        max_h = max(1, int(size * 1.5))
+        iw = max(1, image.width())
+        ih = max(1, image.height())
+        if iw <= max_w and ih <= max_h:
+            return image
+
+        factor = max(1, math.ceil(max(iw / max_w, ih / max_h)))
+        key = (str(image), factor, max_w, max_h)
+        if key not in self._fit_cache:
+            self._fit_cache[key] = image.subsample(factor, factor)
+        return self._fit_cache[key]
