@@ -399,18 +399,23 @@ class AvatarCamApp(tk.Tk):
         ttk.Label(self.chat_frame, text="Canal Twitch ou ID/URL da live YouTube", style="Body.TLabel").grid(row=2, column=0, sticky="w", pady=(0, 4))
         self.chat_channel_entry = ttk.Entry(self.chat_frame, textvariable=self.chat_channel_var)
         self.chat_channel_entry.grid(row=3, column=0, sticky="ew", pady=(0, 8))
-        ttk.Button(self.chat_frame, text="Configuracao do chat", command=self._open_chat_config).grid(row=4, column=0, sticky="ew", pady=(0, 8))
+        ttk.Label(self.chat_frame, text="YouTube API key", style="Body.TLabel").grid(row=4, column=0, sticky="w", pady=(0, 4))
+        self.youtube_api_entry = ttk.Entry(self.chat_frame, textvariable=self.youtube_api_key_var, show="*")
+        self.youtube_api_entry.grid(row=5, column=0, sticky="ew", pady=(0, 8))
+        ttk.Label(self.chat_frame, text="YouTube liveChatId opcional", style="Body.TLabel").grid(row=6, column=0, sticky="w", pady=(0, 4))
+        self.youtube_chat_id_entry = ttk.Entry(self.chat_frame, textvariable=self.youtube_live_chat_id_var)
+        self.youtube_chat_id_entry.grid(row=7, column=0, sticky="ew", pady=(0, 8))
         chat_buttons = ttk.Frame(self.chat_frame)
-        chat_buttons.grid(row=5, column=0, sticky="ew", pady=(0, 8))
+        chat_buttons.grid(row=8, column=0, sticky="ew", pady=(0, 8))
         chat_buttons.columnconfigure(0, weight=1)
         chat_buttons.columnconfigure(1, weight=1)
         self.chat_button = ttk.Button(chat_buttons, text="Conectar chat", command=self._toggle_chat, style="Primary.TButton")
         self.chat_button.grid(row=0, column=0, sticky="ew", padx=(0, 4))
         ttk.Button(chat_buttons, text="Limpar chat", command=self._clear_chat_log).grid(row=0, column=1, sticky="ew", padx=(4, 0))
-        ttk.Checkbutton(self.chat_frame, text="Comandos do chat", variable=self.chat_commands_var, command=self._save_chat_settings).grid(row=6, column=0, sticky="w")
-        self._add_chat_slider("Cooldown comandos", self.chat_cooldown_var, 2, 60, 7)
+        ttk.Checkbutton(self.chat_frame, text="Comandos do chat", variable=self.chat_commands_var, command=self._save_chat_settings).grid(row=9, column=0, sticky="w")
+        self._add_chat_slider("Cooldown comandos", self.chat_cooldown_var, 2, 60, 10)
         self.chat_log = tk.Listbox(self.chat_frame, height=7, borderwidth=0, activestyle="none")
-        self.chat_log.grid(row=9, column=0, sticky="ew", pady=(8, 0))
+        self.chat_log.grid(row=12, column=0, sticky="ew", pady=(8, 0))
 
         self.status_label = ttk.Label(self.control_frame, text="Microfone desligado", style="Status.TLabel")
         self.status_label.grid(row=21, column=0, sticky="ew", pady=(10, 0))
@@ -441,56 +446,6 @@ class AvatarCamApp(tk.Tk):
         ttk.Label(self.chat_frame, text=label, style="Body.TLabel").grid(row=row, column=0, sticky="w", pady=(8, 4))
         slider = ttk.Scale(self.chat_frame, from_=start, to=end, variable=variable, command=lambda _value: self._save_chat_settings())
         slider.grid(row=row + 1, column=0, sticky="ew")
-
-    def _open_chat_config(self) -> None:
-        window = tk.Toplevel(self)
-        window.title("Configuracao do chat")
-        window.geometry("520x360")
-        window.minsize(460, 320)
-        window.configure(bg=self.colors["bg"])
-        window.transient(self)
-        window.grab_set()
-
-        notebook = ttk.Notebook(window)
-        notebook.pack(fill=tk.BOTH, expand=True, padx=16, pady=16)
-
-        youtube_tab = ttk.Frame(notebook, padding=14)
-        commands_tab = ttk.Frame(notebook, padding=14)
-        notebook.add(youtube_tab, text="YouTube")
-        notebook.add(commands_tab, text="Comandos")
-        youtube_tab.columnconfigure(0, weight=1)
-        commands_tab.columnconfigure(0, weight=1)
-
-        ttk.Label(youtube_tab, text="YouTube API key", style="Body.TLabel").grid(row=0, column=0, sticky="w", pady=(0, 4))
-        ttk.Entry(youtube_tab, textvariable=self.youtube_api_key_var, show="*").grid(row=1, column=0, sticky="ew", pady=(0, 12))
-        ttk.Label(youtube_tab, text="YouTube liveChatId opcional", style="Body.TLabel").grid(row=2, column=0, sticky="w", pady=(0, 4))
-        ttk.Entry(youtube_tab, textvariable=self.youtube_live_chat_id_var).grid(row=3, column=0, sticky="ew", pady=(0, 12))
-        ttk.Label(
-            youtube_tab,
-            text="A chave fica salva localmente no PC e nao aparece na tela principal.",
-            style="Body.TLabel",
-            wraplength=440,
-        ).grid(row=4, column=0, sticky="w", pady=(4, 12))
-
-        ttk.Checkbutton(commands_tab, text="Comandos do chat", variable=self.chat_commands_var).grid(row=0, column=0, sticky="w", pady=(0, 10))
-        ttk.Label(commands_tab, text="Cooldown comandos", style="Body.TLabel").grid(row=1, column=0, sticky="w", pady=(0, 4))
-        ttk.Scale(commands_tab, from_=2, to=60, variable=self.chat_cooldown_var).grid(row=2, column=0, sticky="ew", pady=(0, 12))
-        ttk.Label(
-            commands_tab,
-            text="Comandos ativos: !pet, !pular, !jump, !teste, !live, !avatar nome.",
-            style="Body.TLabel",
-            wraplength=440,
-        ).grid(row=3, column=0, sticky="w")
-
-        footer = ttk.Frame(window, padding=(16, 0, 16, 16))
-        footer.pack(fill=tk.X)
-        footer.columnconfigure(0, weight=1)
-        ttk.Button(footer, text="Salvar", style="Primary.TButton", command=lambda: self._save_chat_config_window(window)).grid(row=0, column=1)
-
-    def _save_chat_config_window(self, window: tk.Toplevel) -> None:
-        self._save_chat_settings(force=True)
-        window.destroy()
-        self.status_label.configure(text="Configuracao do chat salva")
 
     def _apply_theme(self) -> None:
         c = self.colors
@@ -604,8 +559,8 @@ class AvatarCamApp(tk.Tk):
         self.settings.save()
         self.chat_button.configure(text="Desconectar chat")
 
-    def _save_chat_settings(self, force: bool = False) -> None:
-        if not force and (self.twitch_chat.is_running or self.youtube_chat.is_running):
+    def _save_chat_settings(self) -> None:
+        if self.twitch_chat.is_running or self.youtube_chat.is_running:
             return
         self.settings.chat_platform = self.chat_platform_var.get()
         self.settings.chat_channel = self.chat_channel_var.get().strip().lstrip("#")

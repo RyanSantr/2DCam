@@ -218,15 +218,14 @@ Na area **Chat da live**:
 
 1. Escolha **twitch** ou **youtube**.
 2. Para Twitch, digite o nome do canal, sem `#`.
-3. Para YouTube, digite o ID ou URL da live na tela principal.
-4. Clique em **Configuracao do chat** para preencher a **YouTube API key** em uma janela separada e mascarada.
-5. Se voce ja tiver o `liveChatId`, pode preencher o campo opcional nessa mesma configuracao.
-6. Clique em **Conectar chat**.
-7. As mensagens recentes aparecem no painel.
-8. Ative ou desative **Comandos do chat**.
-9. Ajuste o cooldown para evitar spam.
+3. Para YouTube, digite o ID ou URL da live e uma **YouTube API key**.
+4. Se voce ja tiver o `liveChatId`, pode preencher o campo opcional.
+5. Clique em **Conectar chat**.
+6. As mensagens recentes aparecem no painel.
+7. Ative ou desative **Comandos do chat**.
+8. Ajuste o cooldown para evitar spam.
 
-Twitch funciona sem login. YouTube usa a API oficial, entao precisa de uma chave da YouTube Data API v3 no Google Cloud. A chave fica salva localmente e nao aparece no painel principal.
+Twitch funciona sem login. YouTube usa a API oficial, entao precisa de uma chave da YouTube Data API v3 no Google Cloud.
 
 Comandos iniciais funcionam nas duas plataformas:
 
