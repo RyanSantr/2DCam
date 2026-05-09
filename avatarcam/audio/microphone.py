@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import queue
+import struct
 from typing import Optional
 
 
@@ -31,10 +32,11 @@ class MicrophoneInput:
             ) from exc
 
         self._sounddevice = sd
-        self._stream = sd.InputStream(
+        self._stream = sd.RawInputStream(
             channels=1,
             samplerate=self.samplerate,
             blocksize=self.blocksize,
+            dtype="float32",
             callback=self._callback,
         )
         self._stream.start()
@@ -63,11 +65,13 @@ class MicrophoneInput:
             pass
 
         total = 0.0
-        for sample in indata:
-            value = float(sample[0])
+        sample_count = max(1, len(indata) // 4)
+
+        for index in range(sample_count):
+            value = struct.unpack_from("f", indata, index * 4)[0]
             total += value * value
 
-        rms = math.sqrt(total / max(1, len(indata)))
+        rms = math.sqrt(total / sample_count)
         level = min(1.0, rms * 8.0)
 
         if self._levels.full():
