@@ -25,6 +25,8 @@ class AvatarCanvas(tk.Canvas):
         self.offset_y = 0.0
         self.idle_motion = True
         self.avatar_shadow = True
+        self.pet_enabled = False
+        self.pet_size = 0.85
         self.speaking = False
         self.level = 0.0
         self.frame = 0
@@ -70,9 +72,19 @@ class AvatarCanvas(tk.Canvas):
         self._last_signature = None
         self.draw()
 
-    def set_visual_options(self, idle_motion: bool, avatar_shadow: bool) -> None:
+    def set_visual_options(
+        self,
+        idle_motion: bool,
+        avatar_shadow: bool,
+        pet_enabled: bool | None = None,
+        pet_size: float | None = None,
+    ) -> None:
         self.idle_motion = idle_motion
         self.avatar_shadow = avatar_shadow
+        if pet_enabled is not None:
+            self.pet_enabled = pet_enabled
+        if pet_size is not None:
+            self.pet_size = max(0.45, min(1.6, pet_size))
         self._last_signature = None
         self.draw()
 
@@ -96,10 +108,18 @@ class AvatarCanvas(tk.Canvas):
 
     def _should_redraw(self) -> bool:
         frames = self._current_frames()
-        animated = self.idle_motion or len(frames) > 1
+        animated = self.idle_motion or self.pet_enabled or len(frames) > 1
         level_bucket = int(self.level * 10) if self.speaking else 0
         frame_bucket = (self.frame // max(1, int(30 / self.animation_fps))) if animated else 0
-        signature = (self.speaking, level_bucket, frame_bucket, len(frames), self.background)
+        signature = (
+            self.speaking,
+            level_bucket,
+            frame_bucket,
+            len(frames),
+            self.background,
+            self.pet_enabled,
+            round(self.pet_size, 2),
+        )
         if signature == self._last_signature:
             return False
         self._last_signature = signature
@@ -117,9 +137,11 @@ class AvatarCanvas(tk.Canvas):
 
         self._draw_background(w, h)
         if self._draw_custom_image(cx, cy):
+            self._draw_pet(w, h, scale)
             return
 
         self._draw_empty_state(cx, cy, scale)
+        self._draw_pet(w, h, scale)
 
     def _draw_background(self, w: int, h: int) -> None:
         top, bottom = BACKGROUNDS.get(self.background, BACKGROUNDS["studio"])
@@ -208,3 +230,98 @@ class AvatarCanvas(tk.Canvas):
             fill="#ffffff",
             font=("Segoe UI", max(10, int(p(13))), "bold"),
         )
+
+    def _draw_pet(self, w: int, h: int, avatar_scale: float) -> None:
+        if not self.pet_enabled:
+            return
+
+        base = max(0.55, min(1.35, avatar_scale)) * self.pet_size
+        size = max(34, min(w, h) * 0.13 * base)
+        margin = max(12, size * 0.28)
+        t = self.frame
+        mood_cycle = (t // 180) % 4
+        reacting = self.speaking and self.level > 0.08
+
+        x = w - margin - size * 0.7
+        y = h - margin - size * 0.55
+        if mood_cycle == 1:
+            y += math.sin(t / 5) * size * 0.10
+        elif mood_cycle == 2 and not reacting:
+            y += size * 0.10
+        elif mood_cycle == 3:
+            x += math.sin(t / 18) * size * 0.10
+
+        if reacting:
+            y -= min(1.0, self.level * 2.8) * size * 0.22
+
+        blink = (t % 140) > 132
+        sleepy = mood_cycle == 2 and not reacting
+        happy = reacting or mood_cycle == 1
+        tail_angle = math.sin(t / (4 if reacting else 9)) * size * 0.22
+
+        shadow_y = y + size * 0.48
+        self.create_oval(
+            x - size * 0.7,
+            shadow_y - size * 0.09,
+            x + size * 0.72,
+            shadow_y + size * 0.08,
+            fill="#000000",
+            outline="",
+            stipple="gray50",
+        )
+
+        body = "#7dd3fc" if reacting else "#8bd7a8"
+        belly = "#f6f7db"
+        accent = "#283246"
+        ear = "#5dbb86"
+        if sleepy:
+            body = "#9aa8c7"
+            ear = "#7987a7"
+
+        self.create_line(
+            x + size * 0.50,
+            y + size * 0.04,
+            x + size * 0.78,
+            y - size * 0.16 + tail_angle,
+            x + size * 0.60,
+            y - size * 0.30 + tail_angle,
+            fill=accent,
+            width=max(2, int(size * 0.08)),
+            smooth=True,
+        )
+        self.create_oval(x - size * 0.58, y - size * 0.28, x + size * 0.58, y + size * 0.50, fill=body, outline=accent, width=max(1, int(size * 0.025)))
+        self.create_oval(x - size * 0.33, y - size * 0.05, x + size * 0.33, y + size * 0.45, fill=belly, outline="")
+        self.create_polygon(
+            x - size * 0.42,
+            y - size * 0.20,
+            x - size * 0.26,
+            y - size * 0.70,
+            x - size * 0.08,
+            y - size * 0.18,
+            fill=ear,
+            outline=accent,
+        )
+        self.create_polygon(
+            x + size * 0.42,
+            y - size * 0.20,
+            x + size * 0.26,
+            y - size * 0.70,
+            x + size * 0.08,
+            y - size * 0.18,
+            fill=ear,
+            outline=accent,
+        )
+        self.create_oval(x - size * 0.42, y - size * 0.58, x + size * 0.42, y + size * 0.08, fill=body, outline=accent, width=max(1, int(size * 0.025)))
+
+        if blink or sleepy:
+            self.create_line(x - size * 0.20, y - size * 0.25, x - size * 0.08, y - size * 0.25, fill=accent, width=max(1, int(size * 0.03)))
+            self.create_line(x + size * 0.08, y - size * 0.25, x + size * 0.20, y - size * 0.25, fill=accent, width=max(1, int(size * 0.03)))
+        else:
+            self.create_oval(x - size * 0.22, y - size * 0.31, x - size * 0.08, y - size * 0.16, fill=accent, outline="")
+            self.create_oval(x + size * 0.08, y - size * 0.31, x + size * 0.22, y - size * 0.16, fill=accent, outline="")
+
+        self.create_oval(x - size * 0.05, y - size * 0.13, x + size * 0.05, y - size * 0.04, fill=accent, outline="")
+        if happy:
+            self.create_arc(x - size * 0.17, y - size * 0.09, x + size * 0.17, y + size * 0.15, start=205, extent=130, outline=accent, width=max(1, int(size * 0.025)), style=tk.ARC)
+        else:
+            self.create_line(x - size * 0.10, y + size * 0.07, x + size * 0.10, y + size * 0.07, fill=accent, width=max(1, int(size * 0.025)))

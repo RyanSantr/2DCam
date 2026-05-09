@@ -39,6 +39,8 @@ class Settings:
     streamer_safe: bool = False
     microphone_device: int | None = None
     performance_preset: str = "balanced"
+    pet_enabled: bool = False
+    pet_size: float = 0.85
 
     @classmethod
     def load(cls) -> "Settings":

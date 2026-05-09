@@ -101,7 +101,12 @@ class AvatarCamApp(tk.Tk):
             self.settings.avatar_offset_x,
             self.settings.avatar_offset_y,
         )
-        self.avatar_canvas.set_visual_options(self.settings.idle_motion, self.settings.avatar_shadow)
+        self.avatar_canvas.set_visual_options(
+            self.settings.idle_motion,
+            self.settings.avatar_shadow,
+            self.settings.pet_enabled,
+            self.settings.pet_size,
+        )
 
         meter_box = ttk.Frame(self.stage_frame)
         meter_box.grid(row=2, column=0, sticky="ew", pady=(12, 0))
@@ -182,6 +187,8 @@ class AvatarCamApp(tk.Tk):
         self.idle_motion_var = tk.BooleanVar(value=self.settings.idle_motion)
         self.avatar_shadow_var = tk.BooleanVar(value=self.settings.avatar_shadow)
         self.streamer_safe_var = tk.BooleanVar(value=self.settings.streamer_safe)
+        self.pet_enabled_var = tk.BooleanVar(value=self.settings.pet_enabled)
+        self.pet_size_var = tk.DoubleVar(value=self.settings.pet_size)
 
         self._add_slider("Sensibilidade", self.sensitivity_var, 0.04, 0.7, 0)
         self._add_slider("Suavizacao", self.smoothing_var, 0.1, 0.95, 1)
@@ -189,43 +196,45 @@ class AvatarCamApp(tk.Tk):
         self._add_slider("Escala avatar", self.avatar_scale_var, 0.25, 2.5, 3)
         self._add_slider("Posicao X", self.avatar_x_var, -0.8, 0.8, 4)
         self._add_slider("Posicao Y", self.avatar_y_var, -0.8, 0.8, 5)
+        self._add_slider("Tamanho do pet", self.pet_size_var, 0.45, 1.6, 6)
 
-        ttk.Label(self.settings_frame, text="Microfone", style="Body.TLabel").grid(row=12, column=0, sticky="w", pady=(12, 4))
+        ttk.Label(self.settings_frame, text="Microfone", style="Body.TLabel").grid(row=14, column=0, sticky="w", pady=(12, 4))
         self.input_devices = MicrophoneInput.list_input_devices()
         self.microphone_names = [name for name, _index in self.input_devices]
         current_device = next((name for name, index in self.input_devices if index == self.settings.microphone_device), self.microphone_names[0])
         self.microphone_var = tk.StringVar(value=current_device)
         self.microphone_select = ttk.Combobox(self.settings_frame, textvariable=self.microphone_var, values=self.microphone_names, state="readonly")
-        self.microphone_select.grid(row=13, column=0, sticky="ew")
+        self.microphone_select.grid(row=15, column=0, sticky="ew")
         self.microphone_select.bind("<<ComboboxSelected>>", lambda _event: self._change_microphone())
 
-        ttk.Label(self.settings_frame, text="Preset performance", style="Body.TLabel").grid(row=14, column=0, sticky="w", pady=(12, 4))
+        ttk.Label(self.settings_frame, text="Preset performance", style="Body.TLabel").grid(row=16, column=0, sticky="w", pady=(12, 4))
         self.performance_preset_select = ttk.Combobox(
             self.settings_frame,
             textvariable=self.performance_preset_var,
             values=("quality", "balanced", "performance", "ultra"),
             state="readonly",
         )
-        self.performance_preset_select.grid(row=15, column=0, sticky="ew")
+        self.performance_preset_select.grid(row=17, column=0, sticky="ew")
         self.performance_preset_select.bind("<<ComboboxSelected>>", lambda _event: self._apply_performance_preset())
 
-        ttk.Label(self.settings_frame, text="Fundo preview", style="Body.TLabel").grid(row=16, column=0, sticky="w", pady=(12, 4))
+        ttk.Label(self.settings_frame, text="Fundo preview", style="Body.TLabel").grid(row=18, column=0, sticky="w", pady=(12, 4))
         self.background_select = ttk.Combobox(
             self.settings_frame,
             textvariable=self.background_var,
             values=("studio", "aurora", "grid", "clean"),
             state="readonly",
         )
-        self.background_select.grid(row=17, column=0, sticky="ew")
+        self.background_select.grid(row=19, column=0, sticky="ew")
         self.background_select.bind("<<ComboboxSelected>>", lambda _event: self._save_settings())
 
         self.dark_check = ttk.Checkbutton(self.settings_frame, text="Modo escuro", variable=self.dark_var, command=self._toggle_theme_from_check)
-        self.dark_check.grid(row=18, column=0, sticky="w", pady=(14, 0))
+        self.dark_check.grid(row=20, column=0, sticky="w", pady=(14, 0))
         self.performance_check = ttk.Checkbutton(self.settings_frame, text="Modo performance: pausar preview", variable=self.performance_var, command=self._save_settings)
-        self.performance_check.grid(row=19, column=0, sticky="w", pady=(8, 0))
-        ttk.Checkbutton(self.settings_frame, text="Movimento vertical automatico", variable=self.idle_motion_var, command=self._save_settings).grid(row=20, column=0, sticky="w", pady=(8, 0))
-        ttk.Checkbutton(self.settings_frame, text="Sombra do avatar", variable=self.avatar_shadow_var, command=self._save_settings).grid(row=21, column=0, sticky="w", pady=(8, 0))
-        ttk.Checkbutton(self.settings_frame, text="Modo streamer seguro", variable=self.streamer_safe_var, command=self._save_settings).grid(row=22, column=0, sticky="w", pady=(8, 0))
+        self.performance_check.grid(row=21, column=0, sticky="w", pady=(8, 0))
+        ttk.Checkbutton(self.settings_frame, text="Movimento vertical automatico", variable=self.idle_motion_var, command=self._save_settings).grid(row=22, column=0, sticky="w", pady=(8, 0))
+        ttk.Checkbutton(self.settings_frame, text="Sombra do avatar", variable=self.avatar_shadow_var, command=self._save_settings).grid(row=23, column=0, sticky="w", pady=(8, 0))
+        ttk.Checkbutton(self.settings_frame, text="Pet com vida propria", variable=self.pet_enabled_var, command=self._save_settings).grid(row=24, column=0, sticky="w", pady=(8, 0))
+        ttk.Checkbutton(self.settings_frame, text="Modo streamer seguro", variable=self.streamer_safe_var, command=self._save_settings).grid(row=25, column=0, sticky="w", pady=(8, 0))
 
         self.expression_frame = ttk.LabelFrame(self.control_frame, text="Expressoes", padding=14)
         self.expression_frame.grid(row=13, column=0, sticky="ew", pady=(10, 10))
@@ -497,6 +506,8 @@ class AvatarCamApp(tk.Tk):
                 "avatar_offset_y": float(self.avatar_y_var.get()),
                 "idle_motion": self.idle_motion_var.get(),
                 "avatar_shadow": self.avatar_shadow_var.get(),
+                "pet_enabled": self.pet_enabled_var.get(),
+                "pet_size": float(self.pet_size_var.get()),
             },
         )
         self.status_label.configure(text="Avatarpack exportado")
@@ -524,6 +535,8 @@ class AvatarCamApp(tk.Tk):
         self.avatar_y_var.set(float(settings.get("avatar_offset_y", self.avatar_y_var.get())))
         self.idle_motion_var.set(bool(settings.get("idle_motion", self.idle_motion_var.get())))
         self.avatar_shadow_var.set(bool(settings.get("avatar_shadow", self.avatar_shadow_var.get())))
+        self.pet_enabled_var.set(bool(settings.get("pet_enabled", self.pet_enabled_var.get())))
+        self.pet_size_var.set(float(settings.get("pet_size", self.pet_size_var.get())))
         self.profile_var.set(pack.get("name", "Imported"))
         self._save_settings()
         self._save_image_sets()
@@ -614,6 +627,8 @@ class AvatarCamApp(tk.Tk):
             "avatar_scale": float(self.avatar_scale_var.get()),
             "avatar_offset_x": float(self.avatar_x_var.get()),
             "avatar_offset_y": float(self.avatar_y_var.get()),
+            "pet_enabled": self.pet_enabled_var.get(),
+            "pet_size": float(self.pet_size_var.get()),
             "obs_background": self.obs_background_var.get(),
             "obs_resolution": self.obs_resolution_var.get(),
             "expressions": self.settings.expressions or {},
@@ -682,6 +697,8 @@ class AvatarCamApp(tk.Tk):
         self.avatar_scale_var.set(float(profile.get("avatar_scale", self.settings.avatar_scale)))
         self.avatar_x_var.set(float(profile.get("avatar_offset_x", self.settings.avatar_offset_x)))
         self.avatar_y_var.set(float(profile.get("avatar_offset_y", self.settings.avatar_offset_y)))
+        self.pet_enabled_var.set(bool(profile.get("pet_enabled", self.settings.pet_enabled)))
+        self.pet_size_var.set(float(profile.get("pet_size", self.settings.pet_size)))
         self.obs_background_var.set(profile.get("obs_background", self.settings.obs_background))
         self.obs_resolution_var.set(profile.get("obs_resolution", self.settings.obs_resolution))
         self.settings.active_profile = name
@@ -728,6 +745,8 @@ class AvatarCamApp(tk.Tk):
         self.settings.idle_motion = self.idle_motion_var.get()
         self.settings.avatar_shadow = self.avatar_shadow_var.get()
         self.settings.streamer_safe = self.streamer_safe_var.get()
+        self.settings.pet_enabled = self.pet_enabled_var.get()
+        self.settings.pet_size = float(self.pet_size_var.get())
         self.detector.sensitivity = self.settings.sensitivity
         self.detector.smoothing = self.settings.smoothing
         self.avatar_canvas.set_background(self.settings.background)
@@ -737,7 +756,12 @@ class AvatarCamApp(tk.Tk):
             self.settings.avatar_offset_x,
             self.settings.avatar_offset_y,
         )
-        self.avatar_canvas.set_visual_options(self.settings.idle_motion, self.settings.avatar_shadow)
+        self.avatar_canvas.set_visual_options(
+            self.settings.idle_motion,
+            self.settings.avatar_shadow,
+            self.settings.pet_enabled,
+            self.settings.pet_size,
+        )
         if self.obs_window and self.obs_window.winfo_exists():
             self.obs_window.set_animation_fps(self.settings.animation_fps)
             self.obs_window.set_transform(
@@ -745,7 +769,12 @@ class AvatarCamApp(tk.Tk):
                 self.settings.avatar_offset_x,
                 self.settings.avatar_offset_y,
             )
-            self.obs_window.set_visual_options(self.settings.idle_motion, self.settings.avatar_shadow)
+            self.obs_window.set_visual_options(
+                self.settings.idle_motion,
+                self.settings.avatar_shadow,
+                self.settings.pet_enabled,
+                self.settings.pet_size,
+            )
         self.settings.save()
 
     def _toggle_obs_window(self) -> None:
@@ -773,7 +802,12 @@ class AvatarCamApp(tk.Tk):
                 self.settings.avatar_offset_x,
                 self.settings.avatar_offset_y,
             )
-            self.obs_window.set_visual_options(self.settings.idle_motion, self.settings.avatar_shadow)
+            self.obs_window.set_visual_options(
+                self.settings.idle_motion,
+                self.settings.avatar_shadow,
+                self.settings.pet_enabled,
+                self.settings.pet_size,
+            )
         else:
             self.obs_window.deiconify()
             if self.settings.obs_always_on_top:
