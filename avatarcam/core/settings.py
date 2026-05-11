@@ -54,7 +54,6 @@ class Settings:
     pet_mirror: bool = False
     mouth_hold_ticks: int = 5
     auto_start_minimized: bool = False
-    show_voice_meter: bool = False
 
     @classmethod
     def load(cls) -> "Settings":

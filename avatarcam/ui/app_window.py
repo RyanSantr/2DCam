@@ -22,7 +22,6 @@ from avatarcam.ui.obs_window import ObsOutputWindow
 from avatarcam.ui.setup_wizard import SetupWizard
 from avatarcam.ui.theme import DARK, LIGHT, OBS_BACKGROUNDS
 from avatarcam.ui.tray import TrayController
-from avatarcam.ui.voice_meter import VoiceMeter
 
 
 class AvatarCamApp(tk.Tk):
@@ -48,7 +47,6 @@ class AvatarCamApp(tk.Tk):
         self.ui_tick = 0
         self.status_hold_until = 0
         self.pending_settings_save: str | None = None
-        self.last_volume_percent = -1
         self.last_speaking = False
         self.obs_window: ObsOutputWindow | None = None
         self.idle_images = list(self.settings.idle_images or [])
@@ -130,15 +128,6 @@ class AvatarCamApp(tk.Tk):
             self.settings.pet_mirror,
         )
 
-        self.meter_box = ttk.Frame(self.stage_frame)
-        self.meter_box.columnconfigure(0, weight=1)
-        self.meter_title = ttk.Label(self.meter_box, text="Volume do microfone", style="Body.TLabel")
-        self.meter_title.grid(row=0, column=0, sticky="w")
-        self.volume_label = ttk.Label(self.meter_box, text="0%", style="Strong.TLabel")
-        self.volume_label.grid(row=0, column=1, sticky="e")
-        self.voice_meter = VoiceMeter(self.meter_box)
-        self.voice_meter.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(8, 0))
-
         self.control_canvas = tk.Canvas(self.container, highlightthickness=0, borderwidth=0)
         self.control_canvas.grid(row=0, column=1, sticky="nsew")
         self.control_scrollbar = ttk.Scrollbar(self.container, orient="vertical", command=self.control_canvas.yview)
@@ -182,8 +171,6 @@ class AvatarCamApp(tk.Tk):
         self.pet_mirror_var = tk.BooleanVar(value=self.settings.pet_mirror)
         self.mouth_hold_var = tk.IntVar(value=self.settings.mouth_hold_ticks)
         self.auto_start_var = tk.BooleanVar(value=self.settings.auto_start_minimized)
-        self.show_voice_meter_var = tk.BooleanVar(value=self.settings.show_voice_meter)
-        self._sync_meter_visibility()
 
         ttk.Label(self.control_frame, text="Controles", style="Eyebrow.TLabel").grid(row=0, column=0, sticky="w")
         ttk.Label(self.control_frame, text="Painel da live", style="PanelTitle.TLabel").grid(row=1, column=0, sticky="w", pady=(0, 12))
@@ -395,7 +382,6 @@ class AvatarCamApp(tk.Tk):
         ttk.Checkbutton(performance_frame, text="Modo performance: pausar preview", variable=self.performance_var, command=self._save_settings).grid(row=5, column=0, sticky="w", pady=(8, 0))
         ttk.Checkbutton(performance_frame, text="Iniciar minimizado", variable=self.auto_start_var, command=self._save_settings).grid(row=6, column=0, sticky="w", pady=(8, 0))
         ttk.Checkbutton(performance_frame, text="Modo streamer seguro", variable=self.streamer_safe_var, command=self._save_settings).grid(row=7, column=0, sticky="w", pady=(8, 0))
-        ttk.Checkbutton(performance_frame, text="Mostrar medidor do microfone", variable=self.show_voice_meter_var, command=self._save_settings).grid(row=8, column=0, sticky="w", pady=(8, 0))
 
         privacy_frame = ttk.LabelFrame(self.system_tab, text="Privacidade e diagnostico", padding=12)
         privacy_frame.grid(row=1, column=0, sticky="ew")
@@ -437,12 +423,6 @@ class AvatarCamApp(tk.Tk):
     def _scroll_controls(self, event: tk.Event) -> None:
         direction = -1 if event.delta > 0 else 1
         self.control_canvas.yview_scroll(direction * 3, "units")
-
-    def _sync_meter_visibility(self) -> None:
-        if self.show_voice_meter_var.get():
-            self.meter_box.grid(row=2, column=0, sticky="ew", pady=(12, 0))
-        else:
-            self.meter_box.grid_remove()
 
     def _add_slider(self, label: str, variable: tk.DoubleVar, start: float, end: float, row: int) -> None:
         self._add_slider_to(self.tuning_tab, label, variable, start, end, row)
@@ -493,8 +473,6 @@ class AvatarCamApp(tk.Tk):
         self.style.configure("Panel.TFrame", background=c["panel"])
         self.avatar_canvas.configure(bg=c["panel"])
         self.control_canvas.configure(bg=c["bg"])
-        if hasattr(self, "voice_meter"):
-            self.voice_meter.set_theme(c)
 
     def _bind_hotkeys(self) -> None:
         self.bind("<F8>", lambda _event: self._toggle_microphone())
@@ -743,7 +721,6 @@ class AvatarCamApp(tk.Tk):
                 "pet_opacity": float(self.pet_opacity_var.get()),
                 "pet_mirror": self.pet_mirror_var.get(),
                 "mouth_hold_ticks": int(float(self.mouth_hold_var.get())),
-                "show_voice_meter": self.show_voice_meter_var.get(),
             },
         )
         self._set_status("Avatarpack exportado")
@@ -785,7 +762,6 @@ class AvatarCamApp(tk.Tk):
         self.pet_opacity_var.set(float(settings.get("pet_opacity", self.pet_opacity_var.get())))
         self.pet_mirror_var.set(bool(settings.get("pet_mirror", self.pet_mirror_var.get())))
         self.mouth_hold_var.set(int(settings.get("mouth_hold_ticks", self.mouth_hold_var.get())))
-        self.show_voice_meter_var.set(bool(settings.get("show_voice_meter", self.show_voice_meter_var.get())))
         self.profile_var.set(pack.get("name", "Imported"))
         self._save_settings()
         self._save_image_sets()
@@ -991,7 +967,6 @@ class AvatarCamApp(tk.Tk):
             "pet_opacity": float(self.pet_opacity_var.get()),
             "pet_mirror": self.pet_mirror_var.get(),
             "mouth_hold_ticks": int(float(self.mouth_hold_var.get())),
-            "show_voice_meter": self.show_voice_meter_var.get(),
             "obs_background": self.obs_background_var.get(),
             "obs_resolution": self.obs_resolution_var.get(),
             "expressions": self.settings.expressions or {},
@@ -1152,7 +1127,6 @@ class AvatarCamApp(tk.Tk):
         self.pet_opacity_var.set(float(profile.get("pet_opacity", self.settings.pet_opacity)))
         self.pet_mirror_var.set(bool(profile.get("pet_mirror", self.settings.pet_mirror)))
         self.mouth_hold_var.set(int(profile.get("mouth_hold_ticks", self.settings.mouth_hold_ticks)))
-        self.show_voice_meter_var.set(bool(profile.get("show_voice_meter", self.settings.show_voice_meter)))
         self.obs_background_var.set(profile.get("obs_background", self.settings.obs_background))
         self.obs_resolution_var.set(profile.get("obs_resolution", self.settings.obs_resolution))
         self.settings.active_profile = name
@@ -1218,8 +1192,6 @@ class AvatarCamApp(tk.Tk):
         self.pet_mirror_var.set(self.settings.pet_mirror)
         self.mouth_hold_var.set(self.settings.mouth_hold_ticks)
         self.auto_start_var.set(self.settings.auto_start_minimized)
-        self.show_voice_meter_var.set(self.settings.show_voice_meter)
-        self._sync_meter_visibility()
 
         self.microphone.set_device(self.settings.microphone_device)
         self.detector.sensitivity = self.settings.sensitivity
@@ -1278,12 +1250,9 @@ class AvatarCamApp(tk.Tk):
         self.settings.pet_mirror = self.pet_mirror_var.get()
         self.settings.mouth_hold_ticks = int(float(self.mouth_hold_var.get()))
         self.settings.auto_start_minimized = self.auto_start_var.get()
-        self.settings.show_voice_meter = self.show_voice_meter_var.get()
-        self._sync_meter_visibility()
         self.detector.sensitivity = self.settings.sensitivity
         self.detector.smoothing = self.settings.smoothing
         self.detector.mouth_hold_ticks = self.settings.mouth_hold_ticks
-        self.voice_meter.set_level(max(0.0, self.last_volume_percent / 100), self.settings.sensitivity, self.last_speaking)
         self.avatar_canvas.set_background(self.settings.background)
         self.avatar_canvas.set_animation_fps(self.settings.animation_fps)
         self.avatar_canvas.set_transform(
@@ -1518,15 +1487,7 @@ class AvatarCamApp(tk.Tk):
             if preset != "ultra" or speaking != self.last_speaking or self.ui_tick % 2 == 0:
                 self.obs_window.update_state(speaking, state.level)
 
-        percent = int(max(0.0, min(1.0, state.level)) * 100)
         self.ui_tick += 1
-        ui_mod = 10 if preset == "ultra" else 6 if preset == "performance" else 3
-        meter_changed = abs(percent - self.last_volume_percent) >= 2 or speaking != self.last_speaking
-        if self.ui_tick % ui_mod == 0 and meter_changed:
-            if self.settings.show_voice_meter:
-                self.voice_meter.set_level(state.level, self.settings.sensitivity, speaking)
-                self.volume_label.configure(text=f"{percent}%")
-            self.last_volume_percent = percent
 
         status_mod = 45 if preset in ("performance", "ultra") else 15
         if self._status_is_held():

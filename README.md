@@ -11,7 +11,6 @@ Aplicacao desktop em Python onde sua camera e substituida por um avatar 2D anima
 - Troca automatica entre idle e fala.
 - Botao para ativar/desativar microfone.
 - Botoes para escolher imagens idle e imagens falando.
-- Medidor de volume opcional, desligado por padrao para uma tela mais limpa.
 - Sensibilidade e suavizacao ajustaveis.
 - FPS da animacao ajustavel.
 - Perfis de avatar para lives diferentes.
@@ -83,7 +82,6 @@ Aplicacao desktop em Python onde sua camera e substituida por um avatar 2D anima
 |       |-- setup_wizard.py
 |       |-- tray.py
 |       |-- theme.py
-|       |-- voice_meter.py
 |-- scripts
     |-- run.bat
     |-- build_exe.bat
@@ -236,7 +234,6 @@ Use os controles:
 - **Posicao X** para mover para esquerda/direita.
 - **Posicao Y** para mover para cima/baixo.
 - **Modo performance** para pausar o preview no painel principal e renderizar apenas a janela OBS.
-- **Mostrar medidor do microfone** para exibir/ocultar a animacao de volume no painel.
 - **Preset performance** para escolher entre qualidade e baixo uso de CPU.
 - **Movimento vertical automatico** para ligar/desligar o sobe e desce do avatar.
 - **Sombra do avatar** para dar leitura melhor no OBS.
