@@ -27,7 +27,8 @@ class SpeechDetector:
 
     def update(self, raw_level: float) -> SpeechState:
         raw_level = max(0.0, min(1.0, raw_level))
-        keep = self.smoothing
+        # Ataque rapido reduz o atraso da boca; release mais suave evita piscadas falsas.
+        keep = min(self.smoothing, 0.24) if raw_level > self.smoothed_level else self.smoothing
         self.smoothed_level = (self.smoothed_level * keep) + (raw_level * (1.0 - keep))
 
         on_threshold = self.sensitivity

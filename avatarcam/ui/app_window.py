@@ -45,6 +45,7 @@ class AvatarCamApp(tk.Tk):
         self.render_fps = 0
         self.ui_tick = 0
         self.status_hold_until = 0
+        self.pending_settings_save: str | None = None
         self.last_volume_percent = -1
         self.last_speaking = False
         self.obs_window: ObsOutputWindow | None = None
@@ -190,7 +191,7 @@ class AvatarCamApp(tk.Tk):
         self.system_tab = ttk.Frame(self.control_tabs, padding=12, style="Panel.TFrame")
         for tab in (self.live_tab, self.assets_tab, self.tuning_tab, self.obs_tab, self.system_tab):
             tab.columnconfigure(0, weight=1)
-        self.control_tabs.add(self.live_tab, text="Operação")
+        self.control_tabs.add(self.live_tab, text="Operacao")
         self.control_tabs.add(self.assets_tab, text="Assets")
         self.control_tabs.add(self.tuning_tab, text="Ajustes")
         self.control_tabs.add(self.obs_tab, text="OBS")
@@ -421,7 +422,7 @@ class AvatarCamApp(tk.Tk):
 
     def _add_slider_to(self, parent: ttk.Frame, label: str, variable: tk.Variable, start: float, end: float, row: int) -> None:
         ttk.Label(parent, text=label, style="Body.TLabel").grid(row=row * 2, column=0, sticky="w", pady=(4, 4))
-        slider = ttk.Scale(parent, from_=start, to=end, variable=variable, command=lambda _value: self._save_settings())
+        slider = ttk.Scale(parent, from_=start, to=end, variable=variable, command=lambda _value: self._save_settings(defer=True))
         slider.grid(row=row * 2 + 1, column=0, sticky="ew")
 
     def _apply_theme(self) -> None:
@@ -497,6 +498,24 @@ class AvatarCamApp(tk.Tk):
 
     def _clock_ms(self) -> int:
         return int(self.tk.call("clock", "milliseconds"))
+
+    def _schedule_settings_save(self, delay_ms: int = 700) -> None:
+        if self.pending_settings_save is not None:
+            self.after_cancel(self.pending_settings_save)
+        self.pending_settings_save = self.after(delay_ms, self._flush_settings_save)
+
+    def _flush_settings_save(self) -> None:
+        self.pending_settings_save = None
+        self.settings.save()
+
+    def _save_settings_file(self, defer: bool = False) -> None:
+        if defer:
+            self._schedule_settings_save()
+            return
+        if self.pending_settings_save is not None:
+            self.after_cancel(self.pending_settings_save)
+            self.pending_settings_save = None
+        self.settings.save()
 
     def _expression_names(self) -> tuple[str, ...]:
         expressions = self.settings.expressions or {}
@@ -1072,9 +1091,9 @@ class AvatarCamApp(tk.Tk):
         self.settings.dark_mode = self.dark_var.get()
         self.colors = DARK if self.settings.dark_mode else LIGHT
         self._apply_theme()
-        self.settings.save()
+        self._save_settings_file()
 
-    def _save_settings(self) -> None:
+    def _save_settings(self, defer: bool = False) -> None:
         self.settings.sensitivity = float(self.sensitivity_var.get())
         self.settings.smoothing = float(self.smoothing_var.get())
         self.settings.background = self.background_var.get()
@@ -1142,7 +1161,7 @@ class AvatarCamApp(tk.Tk):
                 self.settings.pet_opacity,
                 self.settings.pet_mirror,
             )
-        self.settings.save()
+        self._save_settings_file(defer=defer)
 
     def _toggle_obs_window(self) -> None:
         if self.obs_window and self.obs_window.winfo_exists() and self.obs_window.state() != "withdrawn":
@@ -1208,7 +1227,7 @@ class AvatarCamApp(tk.Tk):
             self.obs_window.set_resolution(self.settings.obs_resolution)
             self.obs_window.set_borderless(self.settings.obs_borderless)
 
-        self.settings.save()
+        self._save_settings_file()
 
     def _hide_controls(self) -> None:
         if not self.obs_window or not self.obs_window.winfo_exists() or self.obs_window.state() == "withdrawn":
@@ -1330,10 +1349,22 @@ class AvatarCamApp(tk.Tk):
             self.last_fps_time = now
 
         delay = 100 if preset == "ultra" else 50 if preset == "performance" else 33
+        idle_background = (
+            not self.microphone.is_running
+            and self.test_ticks <= 0
+            and self.calibration_ticks <= 0
+            and (not self.obs_window or not self.obs_window.winfo_exists() or self.obs_window.state() == "withdrawn")
+        )
+        if idle_background:
+            delay = max(delay, 180)
         self.after(delay, self._tick)
 
     def destroy(self) -> None:
         self.log.info("AvatarCam encerrado")
+        if self.pending_settings_save is not None:
+            self.after_cancel(self.pending_settings_save)
+            self.pending_settings_save = None
+            self.settings.save()
         self.tray.stop()
         self.hotkeys.close()
         self.microphone.stop()

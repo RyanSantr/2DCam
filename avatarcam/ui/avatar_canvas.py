@@ -8,6 +8,10 @@ from typing import Any
 from avatarcam.ui.theme import BACKGROUNDS
 
 
+MAX_GIF_FRAMES = 48
+MAX_FIT_CACHE = 96
+
+
 class AvatarCanvas(tk.Canvas):
     """Avatar 2D desenhado em Canvas, pronto para trocar por sprites no futuro."""
 
@@ -63,9 +67,19 @@ class AvatarCanvas(tk.Canvas):
         speaking_paths: list[str] | None = None,
         loud_paths: list[str] | None = None,
     ) -> None:
-        self.pet_paths = pet_paths
-        self.pet_speaking_paths = speaking_paths or []
-        self.pet_loud_paths = loud_paths or []
+        next_pet = list(pet_paths)
+        next_speaking = list(speaking_paths or [])
+        next_loud = list(loud_paths or [])
+        if (
+            self.pet_paths == next_pet
+            and self.pet_speaking_paths == next_speaking
+            and self.pet_loud_paths == next_loud
+        ):
+            return
+
+        self.pet_paths = next_pet
+        self.pet_speaking_paths = next_speaking
+        self.pet_loud_paths = next_loud
         self.pet_frames = self._load_images(pet_paths)
         self.pet_speaking_frames = self._load_images(self.pet_speaking_paths)
         self.pet_loud_frames = self._load_images(self.pet_loud_paths)
@@ -86,30 +100,45 @@ class AvatarCanvas(tk.Canvas):
         high_paths: list[str] | None = None,
         blink_paths: list[str] | None = None,
     ) -> None:
-        self.idle_paths = idle_paths
-        self.speaking_paths = {
-            "low": low_paths or speaking_paths,
-            "mid": mid_paths or speaking_paths,
-            "high": high_paths or speaking_paths,
+        next_idle = list(idle_paths)
+        next_speaking = {
+            "low": list(low_paths or speaking_paths),
+            "mid": list(mid_paths or speaking_paths),
+            "high": list(high_paths or speaking_paths),
         }
-        self.idle_frames = self._load_images(idle_paths)
+        next_blink = list(blink_paths or [])
+        if self.idle_paths == next_idle and self.speaking_paths == next_speaking and self.blink_paths == next_blink:
+            return
+
+        self.idle_paths = next_idle
+        self.speaking_paths = next_speaking
+        self.idle_frames = self._load_images(self.idle_paths)
         self.speaking_frames = {
             name: self._load_images(paths)
             for name, paths in self.speaking_paths.items()
         }
-        self.blink_paths = blink_paths or []
+        self.blink_paths = next_blink
         self.blink_frames = self._load_images(self.blink_paths)
         self._fit_cache.clear()
         self._last_signature = None
         self.draw()
 
     def set_animation_fps(self, fps: int) -> None:
-        self.animation_fps = max(1, min(30, fps))
+        next_fps = max(1, min(30, fps))
+        if self.animation_fps == next_fps:
+            return
+        self.animation_fps = next_fps
+        self._last_signature = None
 
     def set_transform(self, scale: float, offset_x: float, offset_y: float) -> None:
-        self.avatar_scale = max(0.2, min(3.0, scale))
-        self.offset_x = max(-0.8, min(0.8, offset_x))
-        self.offset_y = max(-0.8, min(0.8, offset_y))
+        next_scale = max(0.2, min(3.0, scale))
+        next_x = max(-0.8, min(0.8, offset_x))
+        next_y = max(-0.8, min(0.8, offset_y))
+        if self.avatar_scale == next_scale and self.offset_x == next_x and self.offset_y == next_y:
+            return
+        self.avatar_scale = next_scale
+        self.offset_x = next_x
+        self.offset_y = next_y
         self._fit_cache.clear()
         self._last_signature = None
         self.draw()
@@ -128,6 +157,22 @@ class AvatarCanvas(tk.Canvas):
         pet_opacity: float | None = None,
         pet_mirror: bool | None = None,
     ) -> None:
+        old_pet_size = self.pet_size
+        old_pet_opacity = self.pet_opacity
+        old_pet_mirror = self.pet_mirror
+        old_values = (
+            self.idle_motion,
+            self.avatar_shadow,
+            self.pet_enabled,
+            self.pet_size,
+            self.pet_offset_x,
+            self.pet_offset_y,
+            self.pet_reaction,
+            self.pet_reaction_strength,
+            self.pet_layer,
+            self.pet_opacity,
+            self.pet_mirror,
+        )
         self.idle_motion = idle_motion
         self.avatar_shadow = avatar_shadow
         if pet_enabled is not None:
@@ -148,11 +193,30 @@ class AvatarCanvas(tk.Canvas):
             self.pet_opacity = max(0.05, min(1.0, pet_opacity))
         if pet_mirror is not None:
             self.pet_mirror = pet_mirror
-        self._pet_fit_cache.clear()
+
+        new_values = (
+            self.idle_motion,
+            self.avatar_shadow,
+            self.pet_enabled,
+            self.pet_size,
+            self.pet_offset_x,
+            self.pet_offset_y,
+            self.pet_reaction,
+            self.pet_reaction_strength,
+            self.pet_layer,
+            self.pet_opacity,
+            self.pet_mirror,
+        )
+        if old_values == new_values:
+            return
+        if old_pet_size != self.pet_size or old_pet_opacity != self.pet_opacity or old_pet_mirror != self.pet_mirror:
+            self._pet_fit_cache.clear()
         self._last_signature = None
         self.draw()
 
     def set_background(self, background: str) -> None:
+        if self.background == background:
+            return
         self.background = background
         self._last_signature = None
         self.draw()
@@ -252,7 +316,7 @@ class AvatarCanvas(tk.Canvas):
             return [tk.PhotoImage(file=path)]
 
         frames: list[tk.PhotoImage] = []
-        for index in range(80):
+        for index in range(MAX_GIF_FRAMES):
             try:
                 frames.append(tk.PhotoImage(file=path, format=f"gif -index {index}"))
             except tk.TclError:
@@ -274,7 +338,7 @@ class AvatarCanvas(tk.Canvas):
                     if file_path.suffix.lower() == ".gif":
                         for frame in ImageSequence.Iterator(image):
                             frames.append(frame.convert("RGBA").copy())
-                            if len(frames) >= 80:
+                            if len(frames) >= MAX_GIF_FRAMES:
                                 break
                     else:
                         frames.append(image.convert("RGBA").copy())
@@ -329,6 +393,8 @@ class AvatarCanvas(tk.Canvas):
         factor = max(1, math.ceil(max(iw / max_w, ih / max_h)))
         key = (str(image), factor, max_w, max_h)
         if key not in self._fit_cache:
+            if len(self._fit_cache) > MAX_FIT_CACHE:
+                self._fit_cache.clear()
             self._fit_cache[key] = image.subsample(factor, factor)
         return self._fit_cache[key]
 
@@ -410,6 +476,8 @@ class AvatarCanvas(tk.Canvas):
                     pil_image.putalpha(alpha)
                 key = (id(image), max_w, round(self.pet_opacity, 2), self.pet_mirror)
                 if key not in self._pet_fit_cache:
+                    if len(self._pet_fit_cache) > MAX_FIT_CACHE:
+                        self._pet_fit_cache.clear()
                     self._pet_fit_cache[key] = ImageTk.PhotoImage(pil_image)
                 return self._pet_fit_cache[key]
             except Exception:
@@ -423,5 +491,7 @@ class AvatarCanvas(tk.Canvas):
         factor = max(1, math.ceil(max(iw / max_w, ih / max_h)))
         key = (str(image), factor, max_w, max_h)
         if key not in self._fit_cache:
+            if len(self._fit_cache) > MAX_FIT_CACHE:
+                self._fit_cache.clear()
             self._fit_cache[key] = image.subsample(factor, factor)
         return self._fit_cache[key]

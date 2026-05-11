@@ -67,4 +67,11 @@ class Settings:
 
     def save(self) -> None:
         APP_DIR.mkdir(parents=True, exist_ok=True)
-        SETTINGS_FILE.write_text(json.dumps(asdict(self), indent=2), encoding="utf-8")
+        content = json.dumps(asdict(self), indent=2)
+        if SETTINGS_FILE.is_file():
+            try:
+                if SETTINGS_FILE.read_text(encoding="utf-8") == content:
+                    return
+            except OSError:
+                pass
+        SETTINGS_FILE.write_text(content, encoding="utf-8")
