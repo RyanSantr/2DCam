@@ -22,3 +22,12 @@ def setup_logger() -> logging.Logger:
     handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
     logger.addHandler(handler)
     return logger
+
+
+def close_logger() -> None:
+    """Libera o arquivo de log para permitir apagar dados locais no Windows."""
+    logger = logging.getLogger("avatarcam")
+    for handler in list(logger.handlers):
+        handler.flush()
+        handler.close()
+        logger.removeHandler(handler)

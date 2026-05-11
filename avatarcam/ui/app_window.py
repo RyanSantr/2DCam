@@ -4,10 +4,12 @@ import math
 import os
 from pathlib import Path
 import shutil
+import subprocess
+import time
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
-from avatarcam.core.app_log import setup_logger
+from avatarcam.core.app_log import close_logger, setup_logger
 from avatarcam.core.avatar_pack import export_avatar_pack, import_avatar_folder, import_avatar_pack
 from avatarcam.core.hotkeys import HotkeyManager
 from avatarcam.core.profile_backup import BACKUP_DIR, create_settings_backup, restore_settings_backup
@@ -1368,14 +1370,51 @@ class AvatarCamApp(tk.Tk):
         self.microphone.stop()
         self.hotkeys.close()
         self.tray.stop()
+        self.log.info("Apagando dados locais")
+        close_logger()
+        self._close_explorer_windows_for(APP_DIR)
         try:
             if APP_DIR.exists():
-                shutil.rmtree(APP_DIR)
+                self._remove_app_dir()
         except Exception as exc:
             messagebox.showerror("Privacidade", f"Nao foi possivel apagar tudo:\n{exc}")
             return
         messagebox.showinfo("Privacidade", "Dados locais apagados. O app sera fechado.")
         super().destroy()
+
+    def _remove_app_dir(self) -> None:
+        last_error: Exception | None = None
+        for _attempt in range(4):
+            try:
+                shutil.rmtree(APP_DIR)
+                return
+            except Exception as exc:
+                last_error = exc
+                time.sleep(0.25)
+        if last_error is not None:
+            raise last_error
+
+    def _close_explorer_windows_for(self, path: Path) -> None:
+        target = str(path).replace("\\", "\\\\")
+        script = (
+            "$shell = New-Object -ComObject Shell.Application; "
+            "$shell.Windows() | ForEach-Object { "
+            "try { "
+            "$p = $_.Document.Folder.Self.Path; "
+            f"if ($p -like '{target}*') {{ $_.Quit() }} "
+            "} catch {} "
+            "}"
+        )
+        try:
+            subprocess.run(
+                ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=2,
+            )
+        except Exception:
+            pass
 
     def _tick(self) -> None:
         if self.test_ticks > 0:
@@ -1454,4 +1493,5 @@ class AvatarCamApp(tk.Tk):
         self.tray.stop()
         self.hotkeys.close()
         self.microphone.stop()
+        close_logger()
         super().destroy()
