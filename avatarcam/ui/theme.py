@@ -12,16 +12,16 @@ LIGHT = {
 }
 
 DARK = {
-    "bg": "#111827",
-    "panel": "#182235",
-    "panel_2": "#202c42",
-    "text": "#eef4ff",
-    "muted": "#9aa7bd",
-    "line": "#334155",
-    "primary": "#4f8cff",
-    "primary_dark": "#2f6df0",
-    "danger": "#fb7185",
-    "meter": "#2dd4bf",
+    "bg": "#0d0f14",
+    "panel": "#151821",
+    "panel_2": "#1e232e",
+    "text": "#f4f7fb",
+    "muted": "#9ca7b8",
+    "line": "#2b3240",
+    "primary": "#2f8cff",
+    "primary_dark": "#1f6ed2",
+    "danger": "#ef5f77",
+    "meter": "#35c49f",
 }
 
 BACKGROUNDS = {

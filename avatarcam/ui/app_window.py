@@ -128,13 +128,13 @@ class AvatarCamApp(tk.Tk):
             self.settings.pet_mirror,
         )
 
-        meter_box = ttk.Frame(self.stage_frame)
-        meter_box.grid(row=2, column=0, sticky="ew", pady=(12, 0))
-        meter_box.columnconfigure(0, weight=1)
-        ttk.Label(meter_box, text="Volume do microfone", style="Body.TLabel").grid(row=0, column=0, sticky="w")
-        self.volume_label = ttk.Label(meter_box, text="0%", style="Strong.TLabel")
+        self.meter_box = ttk.Frame(self.stage_frame)
+        self.meter_box.columnconfigure(0, weight=1)
+        self.meter_title = ttk.Label(self.meter_box, text="Volume do microfone", style="Body.TLabel")
+        self.meter_title.grid(row=0, column=0, sticky="w")
+        self.volume_label = ttk.Label(self.meter_box, text="0%", style="Strong.TLabel")
         self.volume_label.grid(row=0, column=1, sticky="e")
-        self.voice_meter = VoiceMeter(meter_box)
+        self.voice_meter = VoiceMeter(self.meter_box)
         self.voice_meter.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(8, 0))
 
         self.control_canvas = tk.Canvas(self.container, highlightthickness=0, borderwidth=0)
@@ -178,6 +178,8 @@ class AvatarCamApp(tk.Tk):
         self.pet_mirror_var = tk.BooleanVar(value=self.settings.pet_mirror)
         self.mouth_hold_var = tk.IntVar(value=self.settings.mouth_hold_ticks)
         self.auto_start_var = tk.BooleanVar(value=self.settings.auto_start_minimized)
+        self.show_voice_meter_var = tk.BooleanVar(value=self.settings.show_voice_meter)
+        self._sync_meter_visibility()
 
         ttk.Label(self.control_frame, text="Controles", style="Eyebrow.TLabel").grid(row=0, column=0, sticky="w")
         ttk.Label(self.control_frame, text="Painel da live", style="PanelTitle.TLabel").grid(row=1, column=0, sticky="w", pady=(0, 12))
@@ -388,6 +390,7 @@ class AvatarCamApp(tk.Tk):
         ttk.Checkbutton(performance_frame, text="Modo performance: pausar preview", variable=self.performance_var, command=self._save_settings).grid(row=5, column=0, sticky="w", pady=(8, 0))
         ttk.Checkbutton(performance_frame, text="Iniciar minimizado", variable=self.auto_start_var, command=self._save_settings).grid(row=6, column=0, sticky="w", pady=(8, 0))
         ttk.Checkbutton(performance_frame, text="Modo streamer seguro", variable=self.streamer_safe_var, command=self._save_settings).grid(row=7, column=0, sticky="w", pady=(8, 0))
+        ttk.Checkbutton(performance_frame, text="Mostrar medidor do microfone", variable=self.show_voice_meter_var, command=self._save_settings).grid(row=8, column=0, sticky="w", pady=(8, 0))
 
         privacy_frame = ttk.LabelFrame(self.system_tab, text="Privacidade e diagnostico", padding=12)
         privacy_frame.grid(row=1, column=0, sticky="ew")
@@ -420,6 +423,12 @@ class AvatarCamApp(tk.Tk):
             if label is not None:
                 label.configure(wraplength=wrap)
 
+    def _sync_meter_visibility(self) -> None:
+        if self.show_voice_meter_var.get():
+            self.meter_box.grid(row=2, column=0, sticky="ew", pady=(12, 0))
+        else:
+            self.meter_box.grid_remove()
+
     def _add_slider(self, label: str, variable: tk.DoubleVar, start: float, end: float, row: int) -> None:
         self._add_slider_to(self.tuning_tab, label, variable, start, end, row)
 
@@ -431,6 +440,10 @@ class AvatarCamApp(tk.Tk):
     def _apply_theme(self) -> None:
         c = self.colors
         self.configure(bg=c["bg"])
+        self.option_add("*TCombobox*Listbox.background", c["panel_2"])
+        self.option_add("*TCombobox*Listbox.foreground", c["text"])
+        self.option_add("*TCombobox*Listbox.selectBackground", c["primary"])
+        self.option_add("*TCombobox*Listbox.selectForeground", "#ffffff")
         self.style.configure(".", background=c["bg"], foreground=c["text"], font=("Segoe UI", 10))
         self.style.configure("TFrame", background=c["bg"])
         self.style.configure("TLabel", background=c["bg"], foreground=c["text"])
@@ -439,6 +452,13 @@ class AvatarCamApp(tk.Tk):
         self.style.configure("TButton", padding=11, font=("Segoe UI", 10, "bold"), background=c["panel_2"], foreground=c["text"])
         self.style.configure("Primary.TButton", background=c["primary"], foreground="#ffffff")
         self.style.map("Primary.TButton", background=[("active", c["primary_dark"])])
+        self.style.map("TButton", background=[("active", c["line"])], foreground=[("disabled", c["muted"])])
+        self.style.configure("TCheckbutton", background=c["panel"], foreground=c["text"], font=("Segoe UI", 10))
+        self.style.map("TCheckbutton", background=[("active", c["panel"])], foreground=[("active", c["text"])])
+        self.style.configure("TCombobox", fieldbackground=c["panel_2"], background=c["panel_2"], foreground=c["text"], arrowcolor=c["muted"], bordercolor=c["line"], lightcolor=c["line"], darkcolor=c["line"])
+        self.style.map("TCombobox", fieldbackground=[("readonly", c["panel_2"])], foreground=[("readonly", c["text"])], selectbackground=[("readonly", c["panel_2"])], selectforeground=[("readonly", c["text"])])
+        self.style.configure("Horizontal.TScale", background=c["panel"], troughcolor=c["panel_2"])
+        self.style.configure("Vertical.TScrollbar", background=c["panel_2"], troughcolor=c["bg"], bordercolor=c["bg"], arrowcolor=c["muted"])
         self.style.configure("Eyebrow.TLabel", foreground=c["muted"], font=("Segoe UI", 9, "bold"))
         self.style.configure("Title.TLabel", foreground=c["text"], font=("Segoe UI", 22, "bold"))
         self.style.configure("PanelTitle.TLabel", foreground=c["text"], font=("Segoe UI", 18, "bold"))
@@ -708,6 +728,7 @@ class AvatarCamApp(tk.Tk):
                 "pet_opacity": float(self.pet_opacity_var.get()),
                 "pet_mirror": self.pet_mirror_var.get(),
                 "mouth_hold_ticks": int(float(self.mouth_hold_var.get())),
+                "show_voice_meter": self.show_voice_meter_var.get(),
             },
         )
         self._set_status("Avatarpack exportado")
@@ -749,6 +770,7 @@ class AvatarCamApp(tk.Tk):
         self.pet_opacity_var.set(float(settings.get("pet_opacity", self.pet_opacity_var.get())))
         self.pet_mirror_var.set(bool(settings.get("pet_mirror", self.pet_mirror_var.get())))
         self.mouth_hold_var.set(int(settings.get("mouth_hold_ticks", self.mouth_hold_var.get())))
+        self.show_voice_meter_var.set(bool(settings.get("show_voice_meter", self.show_voice_meter_var.get())))
         self.profile_var.set(pack.get("name", "Imported"))
         self._save_settings()
         self._save_image_sets()
@@ -891,6 +913,7 @@ class AvatarCamApp(tk.Tk):
             "pet_opacity": float(self.pet_opacity_var.get()),
             "pet_mirror": self.pet_mirror_var.get(),
             "mouth_hold_ticks": int(float(self.mouth_hold_var.get())),
+            "show_voice_meter": self.show_voice_meter_var.get(),
             "obs_background": self.obs_background_var.get(),
             "obs_resolution": self.obs_resolution_var.get(),
             "expressions": self.settings.expressions or {},
@@ -1051,6 +1074,7 @@ class AvatarCamApp(tk.Tk):
         self.pet_opacity_var.set(float(profile.get("pet_opacity", self.settings.pet_opacity)))
         self.pet_mirror_var.set(bool(profile.get("pet_mirror", self.settings.pet_mirror)))
         self.mouth_hold_var.set(int(profile.get("mouth_hold_ticks", self.settings.mouth_hold_ticks)))
+        self.show_voice_meter_var.set(bool(profile.get("show_voice_meter", self.settings.show_voice_meter)))
         self.obs_background_var.set(profile.get("obs_background", self.settings.obs_background))
         self.obs_resolution_var.set(profile.get("obs_resolution", self.settings.obs_resolution))
         self.settings.active_profile = name
@@ -1116,6 +1140,8 @@ class AvatarCamApp(tk.Tk):
         self.pet_mirror_var.set(self.settings.pet_mirror)
         self.mouth_hold_var.set(self.settings.mouth_hold_ticks)
         self.auto_start_var.set(self.settings.auto_start_minimized)
+        self.show_voice_meter_var.set(self.settings.show_voice_meter)
+        self._sync_meter_visibility()
 
         self.microphone.set_device(self.settings.microphone_device)
         self.detector.sensitivity = self.settings.sensitivity
@@ -1174,6 +1200,8 @@ class AvatarCamApp(tk.Tk):
         self.settings.pet_mirror = self.pet_mirror_var.get()
         self.settings.mouth_hold_ticks = int(float(self.mouth_hold_var.get()))
         self.settings.auto_start_minimized = self.auto_start_var.get()
+        self.settings.show_voice_meter = self.show_voice_meter_var.get()
+        self._sync_meter_visibility()
         self.detector.sensitivity = self.settings.sensitivity
         self.detector.smoothing = self.settings.smoothing
         self.detector.mouth_hold_ticks = self.settings.mouth_hold_ticks
@@ -1380,8 +1408,9 @@ class AvatarCamApp(tk.Tk):
         ui_mod = 10 if preset == "ultra" else 6 if preset == "performance" else 3
         meter_changed = abs(percent - self.last_volume_percent) >= 2 or speaking != self.last_speaking
         if self.ui_tick % ui_mod == 0 and meter_changed:
-            self.voice_meter.set_level(state.level, self.settings.sensitivity, speaking)
-            self.volume_label.configure(text=f"{percent}%")
+            if self.settings.show_voice_meter:
+                self.voice_meter.set_level(state.level, self.settings.sensitivity, speaking)
+                self.volume_label.configure(text=f"{percent}%")
             self.last_volume_percent = percent
 
         status_mod = 45 if preset in ("performance", "ultra") else 15
