@@ -10,14 +10,17 @@ from tkinter import filedialog, messagebox, simpledialog, ttk
 from avatarcam.core.app_log import setup_logger
 from avatarcam.core.avatar_pack import export_avatar_pack, import_avatar_folder, import_avatar_pack
 from avatarcam.core.hotkeys import HotkeyManager
+from avatarcam.core.profile_backup import BACKUP_DIR, create_settings_backup, restore_settings_backup
 from avatarcam.core.settings import APP_DIR, LOG_DIR, SETTINGS_FILE
 from avatarcam.audio.microphone import MicrophoneInput
 from avatarcam.core.settings import Settings
 from avatarcam.core.speech_detector import SpeechDetector
 from avatarcam.ui.avatar_canvas import AvatarCanvas
 from avatarcam.ui.obs_window import ObsOutputWindow
+from avatarcam.ui.setup_wizard import SetupWizard
 from avatarcam.ui.theme import DARK, LIGHT, OBS_BACKGROUNDS
 from avatarcam.ui.tray import TrayController
+from avatarcam.ui.voice_meter import VoiceMeter
 
 
 class AvatarCamApp(tk.Tk):
@@ -130,8 +133,8 @@ class AvatarCamApp(tk.Tk):
         ttk.Label(meter_box, text="Volume do microfone", style="Body.TLabel").grid(row=0, column=0, sticky="w")
         self.volume_label = ttk.Label(meter_box, text="0%", style="Strong.TLabel")
         self.volume_label.grid(row=0, column=1, sticky="e")
-        self.volume_bar = ttk.Progressbar(meter_box, maximum=100, mode="determinate")
-        self.volume_bar.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(8, 0))
+        self.voice_meter = VoiceMeter(meter_box)
+        self.voice_meter.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(8, 0))
 
         self.control_canvas = tk.Canvas(self.container, highlightthickness=0, borderwidth=0)
         self.control_canvas.grid(row=0, column=1, sticky="nsew")
@@ -203,16 +206,21 @@ class AvatarCamApp(tk.Tk):
         self.calibrate_button = ttk.Button(live_actions, text="Calibrar ruido ambiente", command=self._start_calibration)
         self.calibrate_button.grid(row=2, column=0, sticky="ew", pady=4)
         ttk.Button(live_actions, text="Ativar modo live", command=self._enable_live_mode, style="Primary.TButton").grid(row=3, column=0, sticky="ew", pady=(8, 0))
+        ttk.Button(live_actions, text="Setup guiado", command=self._open_setup_wizard).grid(row=4, column=0, sticky="ew", pady=(8, 0))
 
         profile_frame = ttk.LabelFrame(self.live_tab, text="Perfil", padding=12)
         profile_frame.grid(row=1, column=0, sticky="ew", pady=(0, 10))
         profile_frame.columnconfigure(0, weight=1)
+        profile_frame.columnconfigure(1, weight=1)
+        profile_frame.columnconfigure(2, weight=1)
         self.profile_var = tk.StringVar(value=self.settings.active_profile)
         self.profile_select = ttk.Combobox(profile_frame, textvariable=self.profile_var, values=self._profile_names(), state="readonly")
-        self.profile_select.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 6))
+        self.profile_select.grid(row=0, column=0, columnspan=3, sticky="ew", pady=(0, 6))
         self.profile_select.bind("<<ComboboxSelected>>", lambda _event: self._load_profile(self.profile_var.get()))
-        ttk.Button(profile_frame, text="Salvar perfil", command=self._save_profile).grid(row=1, column=0, sticky="ew", padx=(0, 4))
-        ttk.Button(profile_frame, text="Novo", command=self._new_profile).grid(row=1, column=1, sticky="ew", padx=(4, 0))
+        ttk.Button(profile_frame, text="Salvar", command=self._save_profile).grid(row=1, column=0, sticky="ew", padx=(0, 4))
+        ttk.Button(profile_frame, text="Novo", command=self._new_profile).grid(row=1, column=1, sticky="ew", padx=4)
+        ttk.Button(profile_frame, text="Duplicar", command=self._duplicate_profile).grid(row=1, column=2, sticky="ew", padx=(4, 0))
+        ttk.Button(profile_frame, text="Restaurar ultimo backup", command=self._restore_latest_backup).grid(row=2, column=0, columnspan=3, sticky="ew", pady=(8, 0))
 
         expression_frame = ttk.LabelFrame(self.live_tab, text="Expressoes", padding=12)
         expression_frame.grid(row=2, column=0, sticky="ew")
@@ -381,7 +389,8 @@ class AvatarCamApp(tk.Tk):
         privacy_frame.grid(row=1, column=0, sticky="ew")
         privacy_frame.columnconfigure(0, weight=1)
         ttk.Button(privacy_frame, text="Abrir pasta de logs", command=self._open_logs).grid(row=0, column=0, sticky="ew", pady=(0, 6))
-        ttk.Button(privacy_frame, text="Apagar configuracoes locais", command=self._reset_privacy).grid(row=1, column=0, sticky="ew")
+        ttk.Button(privacy_frame, text="Abrir pasta de backups", command=self._open_backups).grid(row=1, column=0, sticky="ew", pady=(0, 6))
+        ttk.Button(privacy_frame, text="Apagar configuracoes locais", command=self._reset_privacy).grid(row=2, column=0, sticky="ew")
 
         self.status_label = ttk.Label(self.control_frame, text="Microfone desligado", style="Status.TLabel")
         self.status_label.grid(row=3, column=0, sticky="ew", pady=(12, 0))
@@ -445,6 +454,8 @@ class AvatarCamApp(tk.Tk):
         self.style.configure("Panel.TFrame", background=c["panel"])
         self.avatar_canvas.configure(bg=c["panel"])
         self.control_canvas.configure(bg=c["bg"])
+        if hasattr(self, "voice_meter"):
+            self.voice_meter.set_theme(c)
 
     def _bind_hotkeys(self) -> None:
         self.bind("<F8>", lambda _event: self._toggle_microphone())
@@ -553,6 +564,19 @@ class AvatarCamApp(tk.Tk):
         self.pet_enabled_var.set(not self.pet_enabled_var.get())
         self._save_settings()
         self._set_status("Pet ligado" if self.pet_enabled_var.get() else "Pet oculto")
+
+    def _open_setup_wizard(self) -> None:
+        if getattr(self, "setup_wizard", None) and self.setup_wizard.winfo_exists():
+            self.setup_wizard.lift()
+            return
+        self.setup_wizard = SetupWizard(
+            self,
+            choose_idle=self._choose_idle_images,
+            choose_talk=self._choose_speaking_images,
+            toggle_microphone=self._toggle_microphone,
+            calibrate=self._start_calibration,
+            open_obs=self._toggle_obs_window,
+        )
 
     def _enable_live_mode(self) -> None:
         self.performance_preset_var.set("ultra")
@@ -812,11 +836,8 @@ class AvatarCamApp(tk.Tk):
         pet_count = len(self.pet_images) + len(self.pet_speaking_images) + len(self.pet_loud_images)
         return f"Idle: {len(self.idle_images)} | Fala: {len(self.speaking_images)} | Niveis: {level_count} | Piscar: {len(self.blink_images)} | Pet: {pet_count}"
 
-    def _save_profile(self) -> None:
-        name = self._clean_profile_name(self.profile_var.get())
-        self.profile_var.set(name)
-        profiles = self.settings.profiles or {}
-        profiles[name] = {
+    def _current_profile_data(self) -> dict:
+        return {
             "idle_images": list(self.idle_images),
             "speaking_images": list(self.speaking_images),
             "speaking_low_images": list(self.speaking_low_images),
@@ -846,6 +867,13 @@ class AvatarCamApp(tk.Tk):
             "obs_resolution": self.obs_resolution_var.get(),
             "expressions": self.settings.expressions or {},
         }
+
+    def _save_profile(self) -> None:
+        name = self._clean_profile_name(self.profile_var.get())
+        self.profile_var.set(name)
+        create_settings_backup("antes_salvar_perfil")
+        profiles = self.settings.profiles or {}
+        profiles[name] = self._current_profile_data()
         self.settings.profiles = profiles
         self.settings.active_profile = name
         self.profile_select.configure(values=self._profile_names())
@@ -900,6 +928,22 @@ class AvatarCamApp(tk.Tk):
         self.profile_var.set(name)
         self._save_profile()
 
+    def _duplicate_profile(self) -> None:
+        current = self._clean_profile_name(self.profile_var.get())
+        raw_name = simpledialog.askstring("Duplicar perfil", "Nome do novo perfil:", initialvalue=f"{current} copia")
+        if not raw_name or not raw_name.strip():
+            return
+        new_name = self._clean_profile_name(raw_name)
+        create_settings_backup("antes_duplicar_perfil")
+        profiles = self.settings.profiles or {}
+        profiles[new_name] = self._current_profile_data()
+        self.settings.profiles = profiles
+        self.settings.active_profile = new_name
+        self.profile_var.set(new_name)
+        self.profile_select.configure(values=self._profile_names())
+        self.settings.save()
+        self._set_status(f"Perfil duplicado: {new_name}", 2600)
+
     def _load_profile(self, name: str) -> None:
         name = self._clean_profile_name(name)
         profile = (self.settings.profiles or {}).get(name)
@@ -938,6 +982,72 @@ class AvatarCamApp(tk.Tk):
         self._save_obs_settings()
         self._save_image_sets()
         self._set_status(f"Perfil carregado: {name}", 2600)
+
+    def _restore_latest_backup(self) -> None:
+        if not messagebox.askyesno("Restaurar backup", "Restaurar o ultimo backup local de configuracoes e perfis?"):
+            return
+        try:
+            restored = restore_settings_backup()
+        except Exception as exc:
+            messagebox.showerror("Backup", str(exc))
+            return
+        self.settings = Settings.load()
+        self._apply_settings_to_ui()
+        self._set_status(f"Backup restaurado: {restored.name}", 3200)
+
+    def _apply_settings_to_ui(self) -> None:
+        self.colors = DARK if self.settings.dark_mode else LIGHT
+        self.idle_images = list(self.settings.idle_images or [])
+        self.speaking_images = list(self.settings.speaking_images or [])
+        self.speaking_low_images = list(self.settings.speaking_low_images or [])
+        self.speaking_mid_images = list(self.settings.speaking_mid_images or [])
+        self.speaking_high_images = list(self.settings.speaking_high_images or [])
+        self.blink_images = list(self.settings.blink_images or [])
+        self.pet_images = list(self.settings.pet_images or [])
+        self.pet_speaking_images = list(self.settings.pet_speaking_images or [])
+        self.pet_loud_images = list(self.settings.pet_loud_images or [])
+
+        self.profile_var.set(self.settings.active_profile)
+        self.profile_select.configure(values=self._profile_names())
+        self.expression_var.set(self.settings.active_expression)
+        self.expression_select.configure(values=self._expression_names())
+        self.sensitivity_var.set(self.settings.sensitivity)
+        self.smoothing_var.set(self.settings.smoothing)
+        self.dark_var.set(self.settings.dark_mode)
+        self.background_var.set(self.settings.background)
+        self.obs_background_var.set(self.settings.obs_background)
+        self.obs_top_var.set(self.settings.obs_always_on_top)
+        self.auto_hide_var.set(self.settings.auto_hide_controls)
+        self.animation_fps_var.set(self.settings.animation_fps)
+        self.obs_resolution_var.set(self.settings.obs_resolution)
+        self.obs_borderless_var.set(self.settings.obs_borderless)
+        self.avatar_scale_var.set(self.settings.avatar_scale)
+        self.avatar_x_var.set(self.settings.avatar_offset_x)
+        self.avatar_y_var.set(self.settings.avatar_offset_y)
+        self.performance_var.set(self.settings.performance_mode)
+        self.performance_preset_var.set(self.settings.performance_preset)
+        self.idle_motion_var.set(self.settings.idle_motion)
+        self.avatar_shadow_var.set(self.settings.avatar_shadow)
+        self.streamer_safe_var.set(self.settings.streamer_safe)
+        self.pet_enabled_var.set(self.settings.pet_enabled)
+        self.pet_size_var.set(self.settings.pet_size)
+        self.pet_x_var.set(self.settings.pet_offset_x)
+        self.pet_y_var.set(self.settings.pet_offset_y)
+        self.pet_reaction_var.set(self.settings.pet_reaction)
+        self.pet_strength_var.set(self.settings.pet_reaction_strength)
+        self.pet_layer_var.set(self.settings.pet_layer)
+        self.pet_opacity_var.set(self.settings.pet_opacity)
+        self.pet_mirror_var.set(self.settings.pet_mirror)
+        self.mouth_hold_var.set(self.settings.mouth_hold_ticks)
+        self.auto_start_var.set(self.settings.auto_start_minimized)
+
+        self.microphone.set_device(self.settings.microphone_device)
+        self.detector.sensitivity = self.settings.sensitivity
+        self.detector.smoothing = self.settings.smoothing
+        self.detector.mouth_hold_ticks = self.settings.mouth_hold_ticks
+        self._apply_theme()
+        self._save_image_sets()
+        self._save_obs_settings()
 
     def _trigger_test(self) -> None:
         self.test_ticks = 90
@@ -991,6 +1101,7 @@ class AvatarCamApp(tk.Tk):
         self.detector.sensitivity = self.settings.sensitivity
         self.detector.smoothing = self.settings.smoothing
         self.detector.mouth_hold_ticks = self.settings.mouth_hold_ticks
+        self.voice_meter.set_level(max(0.0, self.last_volume_percent / 100), self.settings.sensitivity, self.last_speaking)
         self.avatar_canvas.set_background(self.settings.background)
         self.avatar_canvas.set_animation_fps(self.settings.animation_fps)
         self.avatar_canvas.set_transform(
@@ -1139,6 +1250,14 @@ class AvatarCamApp(tk.Tk):
             self.log.exception("Falha ao abrir logs")
             messagebox.showerror("Logs", str(exc))
 
+    def _open_backups(self) -> None:
+        BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+        try:
+            os.startfile(BACKUP_DIR)
+        except Exception as exc:
+            self.log.exception("Falha ao abrir backups")
+            messagebox.showerror("Backups", str(exc))
+
     def _reset_privacy(self) -> None:
         if not messagebox.askyesno("Apagar dados locais", "Apagar configuracoes, perfis, caminhos de imagens e logs locais?"):
             return
@@ -1183,8 +1302,9 @@ class AvatarCamApp(tk.Tk):
         percent = int(max(0.0, min(1.0, state.level)) * 100)
         self.ui_tick += 1
         ui_mod = 10 if preset == "ultra" else 6 if preset == "performance" else 3
-        if self.ui_tick % ui_mod == 0 and abs(percent - self.last_volume_percent) >= 2:
-            self.volume_bar["value"] = percent
+        meter_changed = abs(percent - self.last_volume_percent) >= 2 or speaking != self.last_speaking
+        if self.ui_tick % ui_mod == 0 and meter_changed:
+            self.voice_meter.set_level(state.level, self.settings.sensitivity, speaking)
             self.volume_label.configure(text=f"{percent}%")
             self.last_volume_percent = percent
 
