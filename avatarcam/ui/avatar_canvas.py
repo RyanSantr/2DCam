@@ -22,6 +22,8 @@ class AvatarCanvas(tk.Canvas):
         self.speaking_paths: dict[str, list[str]] = {"low": [], "mid": [], "high": []}
         self.idle_frames: list[tk.PhotoImage] = []
         self.speaking_frames: dict[str, list[tk.PhotoImage]] = {"low": [], "mid": [], "high": []}
+        self.idle_pil_frames: list[Any] = []
+        self.speaking_pil_frames: dict[str, list[Any]] = {"low": [], "mid": [], "high": []}
         self.pet_paths: list[str] = []
         self.pet_speaking_paths: list[str] = []
         self.pet_loud_paths: list[str] = []
@@ -33,12 +35,14 @@ class AvatarCanvas(tk.Canvas):
         self.pet_loud_pil_frames: list[Any] = []
         self.blink_paths: list[str] = []
         self.blink_frames: list[tk.PhotoImage] = []
-        self._fit_cache: dict[tuple[str, int, int, int], tk.PhotoImage] = {}
+        self.blink_pil_frames: list[Any] = []
+        self._fit_cache: dict[tuple[Any, ...], tk.PhotoImage] = {}
         self._pet_fit_cache: dict[tuple[int, int, float, bool], tk.PhotoImage] = {}
         self.animation_fps = 12
         self.avatar_scale = 1.0
         self.offset_x = 0.0
         self.offset_y = 0.0
+        self.avatar_rotation = 0.0
         self.idle_motion = True
         self.avatar_shadow = True
         self.pet_enabled = False
@@ -117,8 +121,14 @@ class AvatarCanvas(tk.Canvas):
             name: self._load_images(paths)
             for name, paths in self.speaking_paths.items()
         }
+        self.idle_pil_frames = self._load_pil_frames(self.idle_paths)
+        self.speaking_pil_frames = {
+            name: self._load_pil_frames(paths)
+            for name, paths in self.speaking_paths.items()
+        }
         self.blink_paths = next_blink
         self.blink_frames = self._load_images(self.blink_paths)
+        self.blink_pil_frames = self._load_pil_frames(self.blink_paths)
         self._fit_cache.clear()
         self._last_signature = None
         self.draw()
@@ -130,15 +140,22 @@ class AvatarCanvas(tk.Canvas):
         self.animation_fps = next_fps
         self._last_signature = None
 
-    def set_transform(self, scale: float, offset_x: float, offset_y: float) -> None:
+    def set_transform(self, scale: float, offset_x: float, offset_y: float, rotation: float = 0.0) -> None:
         next_scale = max(0.2, min(3.0, scale))
         next_x = max(-0.8, min(0.8, offset_x))
         next_y = max(-0.8, min(0.8, offset_y))
-        if self.avatar_scale == next_scale and self.offset_x == next_x and self.offset_y == next_y:
+        next_rotation = max(-45.0, min(45.0, rotation))
+        if (
+            self.avatar_scale == next_scale
+            and self.offset_x == next_x
+            and self.offset_y == next_y
+            and self.avatar_rotation == next_rotation
+        ):
             return
         self.avatar_scale = next_scale
         self.offset_x = next_x
         self.offset_y = next_y
+        self.avatar_rotation = next_rotation
         self._fit_cache.clear()
         self._last_signature = None
         self.draw()
@@ -246,6 +263,10 @@ class AvatarCanvas(tk.Canvas):
             len(frames),
             len(self.blink_frames),
             self.background,
+            round(self.avatar_scale, 2),
+            round(self.offset_x, 2),
+            round(self.offset_y, 2),
+            round(self.avatar_rotation, 1),
             self.pet_enabled,
             round(self.pet_size, 2),
             round(self.pet_offset_x, 2),
@@ -367,23 +388,57 @@ class AvatarCanvas(tk.Canvas):
         self._last_drawn_image = image
         return True
 
-    def _current_frames(self) -> list[tk.PhotoImage]:
+    def _current_frames(self) -> list[Any]:
         if not self.speaking:
-            if self.blink_frames and self.frame % 190 > 178:
-                return self.blink_frames
-            return self.idle_frames
+            if (self.blink_pil_frames or self.blink_frames) and self.frame % 190 > 178:
+                return self.blink_pil_frames or self.blink_frames
+            return self.idle_pil_frames or self.idle_frames
 
         if self.level >= 0.45:
-            return self.speaking_frames["high"] or self.speaking_frames["mid"] or self.speaking_frames["low"] or self.idle_frames
+            return (
+                self.speaking_pil_frames["high"]
+                or self.speaking_pil_frames["mid"]
+                or self.speaking_pil_frames["low"]
+                or self.speaking_frames["high"]
+                or self.speaking_frames["mid"]
+                or self.speaking_frames["low"]
+                or self.idle_pil_frames
+                or self.idle_frames
+            )
         if self.level >= 0.22:
-            return self.speaking_frames["mid"] or self.speaking_frames["low"] or self.idle_frames
-        return self.speaking_frames["low"] or self.idle_frames
+            return (
+                self.speaking_pil_frames["mid"]
+                or self.speaking_pil_frames["low"]
+                or self.speaking_frames["mid"]
+                or self.speaking_frames["low"]
+                or self.idle_pil_frames
+                or self.idle_frames
+            )
+        return self.speaking_pil_frames["low"] or self.speaking_frames["low"] or self.idle_pil_frames or self.idle_frames
 
-    def _fit_image(self, image: tk.PhotoImage) -> tk.PhotoImage:
+    def _fit_image(self, image: Any) -> tk.PhotoImage:
         w = max(1, self.winfo_width())
         h = max(1, self.winfo_height())
         max_w = max(1, int(w * 0.86 * self.avatar_scale))
         max_h = max(1, int(h * 0.86 * self.avatar_scale))
+        if not isinstance(image, tk.PhotoImage):
+            try:
+                from PIL import Image, ImageTk
+
+                key = (id(image), max_w, max_h, round(self.avatar_rotation, 1))
+                if key not in self._fit_cache:
+                    if len(self._fit_cache) > MAX_FIT_CACHE:
+                        self._fit_cache.clear()
+                    pil_image = image.copy()
+                    pil_image.thumbnail((max_w, max_h))
+                    if abs(self.avatar_rotation) > 0.05:
+                        resampling = getattr(Image, "Resampling", Image).BICUBIC
+                        pil_image = pil_image.rotate(-self.avatar_rotation, expand=True, resample=resampling)
+                    self._fit_cache[key] = ImageTk.PhotoImage(pil_image)
+                return self._fit_cache[key]
+            except Exception:
+                pass
+
         iw = max(1, image.width())
         ih = max(1, image.height())
 

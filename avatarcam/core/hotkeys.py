@@ -19,7 +19,7 @@ class HotkeyManager:
         return self._keyboard is not None
 
     def register(self, hotkey: str, callback) -> None:
-        if not self._keyboard:
+        if not self._keyboard or not hotkey.strip():
             return
         try:
             handle = self._keyboard.add_hotkey(hotkey, callback)
@@ -27,7 +27,7 @@ class HotkeyManager:
         except Exception:
             pass
 
-    def close(self) -> None:
+    def clear(self) -> None:
         if not self._keyboard:
             return
         for handle in self._handles:
@@ -36,3 +36,6 @@ class HotkeyManager:
             except Exception:
                 pass
         self._handles.clear()
+
+    def close(self) -> None:
+        self.clear()

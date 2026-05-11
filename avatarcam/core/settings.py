@@ -32,9 +32,13 @@ class Settings:
     avatar_scale: float = 1.0
     avatar_offset_x: float = 0.0
     avatar_offset_y: float = 0.0
+    avatar_rotation: float = 0.0
     performance_mode: bool = False
     expressions: dict | None = None
     active_expression: str = "Default"
+    hotkeys: dict | None = None
+    scenes: dict | None = None
+    active_scene: str = "Cena 1"
     idle_motion: bool = False
     avatar_shadow: bool = True
     streamer_safe: bool = False

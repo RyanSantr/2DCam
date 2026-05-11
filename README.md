@@ -20,12 +20,15 @@ Aplicacao desktop em Python onde sua camera e substituida por um avatar 2D anima
 - Importacao copia os assets para a biblioteca local do app.
 - Exportar/importar `.avatarpack`.
 - Validador de assets para detectar arquivos ausentes, pesados ou grandes demais.
-- Sistema de expressoes com atalhos `Ctrl+1` ate `Ctrl+4`.
+- Atalhos configuraveis pelo usuario, incluindo teclas de funcao, `Ctrl` e `Alt`.
+- Cenas salvas com posicao, escala, rotacao, fundo OBS, resolucao e composicao do pet.
+- Atalhos de cena para alternar layout da live em tempo real.
+- Sistema de expressoes para trocar conjuntos de assets rapidamente.
 - Estados de fala baixa, media e alta por volume.
 - Calibracao automatica do ruido ambiente.
-- Hotkeys: `F8`, `F9`, `F10`, `F11`, `F12`.
+- Hotkeys globais configuraveis.
 - Icone de bandeja do Windows com menu rapido.
-- Editor de escala e posicao do avatar.
+- Editor de escala, posicao e rotacao do avatar.
 - Modo performance para pausar o preview do painel.
 - Presets de performance: quality, balanced, performance e ultra.
 - Seletor de dispositivo de microfone.
@@ -196,17 +199,30 @@ Tudo fica local no seu PC. O app nao envia audio nem imagens para internet.
 
 ## Atalhos
 
+Abra a aba **Atalhos** para escolher quais teclas cada acao usa. Por padrao:
+
 - `F8`: ativar/desativar microfone.
 - `F9`: teste de fala.
 - `F10`: mostrar controles.
 - `F11`: abrir/ocultar janela OBS.
 - `F12`: mostrar/ocultar pet.
+- `Ctrl+F11`: ativar modo live.
+- `Ctrl+1` ate `Ctrl+4`: aplicar cenas salvas.
 
 Quando possivel no Windows, o app registra esses atalhos como globais. Se o Windows bloquear, eles continuam funcionando quando a janela do app estiver focada.
 
-Expressoes:
+Deixe um campo vazio para desativar aquele atalho. Se duas acoes usarem a mesma tecla, a primeira na lista fica com prioridade.
 
-- `Ctrl+1` ate `Ctrl+4`: carrega as primeiras expressoes salvas.
+## Cenas
+
+Use a aba **Atalhos** para salvar cenas da live. Cada cena guarda:
+
+- escala, posicao X/Y e rotacao do avatar;
+- FPS, movimento vertical e sombra;
+- fundo, resolucao, borda e topo da janela OBS;
+- pet ligado/desligado, tamanho, posicao, camada, opacidade, espelhamento e reacao.
+
+Ao aplicar uma cena, a janela **OBS Avatar Output** atualiza imediatamente. Isso permite deixar cenas como camera central, avatar no canto, reacao com pet ou layout vertical e trocar tudo por atalho enquanto o OBS captura a mesma janela.
 
 ## Avatarpack
 
@@ -233,6 +249,7 @@ Use os controles:
 - **Escala avatar** para aumentar ou diminuir a arte.
 - **Posicao X** para mover para esquerda/direita.
 - **Posicao Y** para mover para cima/baixo.
+- **Rotacao avatar** para inclinar a arte sem editar o PNG/GIF.
 - **Modo performance** para pausar o preview no painel principal e renderizar apenas a janela OBS.
 - **Preset performance** para escolher entre qualidade e baixo uso de CPU.
 - **Movimento vertical automatico** para ligar/desligar o sobe e desce do avatar.

@@ -24,6 +24,70 @@ from avatarcam.ui.theme import DARK, LIGHT, OBS_BACKGROUNDS
 from avatarcam.ui.tray import TrayController
 
 
+DEFAULT_HOTKEYS = {
+    "toggle_mic": "f8",
+    "test_speech": "f9",
+    "show_controls": "f10",
+    "toggle_obs": "f11",
+    "toggle_pet": "f12",
+    "live_mode": "ctrl+f11",
+    "scene_1": "ctrl+1",
+    "scene_2": "ctrl+2",
+    "scene_3": "ctrl+3",
+    "scene_4": "ctrl+4",
+}
+
+HOTKEY_ACTION_LABELS = {
+    "toggle_mic": "Microfone liga/desliga",
+    "test_speech": "Teste de fala",
+    "show_controls": "Mostrar controles",
+    "toggle_obs": "Abrir/ocultar OBS",
+    "toggle_pet": "Mostrar/ocultar pet",
+    "live_mode": "Ativar modo live",
+    "scene_1": "Aplicar cena 1",
+    "scene_2": "Aplicar cena 2",
+    "scene_3": "Aplicar cena 3",
+    "scene_4": "Aplicar cena 4",
+}
+
+HOTKEY_CHOICES = (
+    "",
+    "f1",
+    "f2",
+    "f3",
+    "f4",
+    "f5",
+    "f6",
+    "f7",
+    "f8",
+    "f9",
+    "f10",
+    "f11",
+    "f12",
+    "ctrl+1",
+    "ctrl+2",
+    "ctrl+3",
+    "ctrl+4",
+    "ctrl+5",
+    "ctrl+6",
+    "ctrl+7",
+    "ctrl+8",
+    "ctrl+9",
+    "alt+1",
+    "alt+2",
+    "alt+3",
+    "alt+4",
+    "ctrl+f9",
+    "ctrl+f10",
+    "ctrl+f11",
+    "ctrl+f12",
+    "alt+f9",
+    "alt+f10",
+    "alt+f11",
+    "alt+f12",
+)
+
+
 class AvatarCamApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
@@ -60,6 +124,7 @@ class AvatarCamApp(tk.Tk):
         self.pet_loud_images = list(self.settings.pet_loud_images or [])
         self.expression_var = tk.StringVar(value=self.settings.active_expression)
         self.hotkeys = HotkeyManager()
+        self.local_hotkey_sequences: list[str] = []
         self.tray = TrayController(self)
 
         self._configure_style()
@@ -113,6 +178,7 @@ class AvatarCamApp(tk.Tk):
             self.settings.avatar_scale,
             self.settings.avatar_offset_x,
             self.settings.avatar_offset_y,
+            self.settings.avatar_rotation,
         )
         self.avatar_canvas.set_visual_options(
             self.settings.idle_motion,
@@ -155,6 +221,7 @@ class AvatarCamApp(tk.Tk):
         self.avatar_scale_var = tk.DoubleVar(value=self.settings.avatar_scale)
         self.avatar_x_var = tk.DoubleVar(value=self.settings.avatar_offset_x)
         self.avatar_y_var = tk.DoubleVar(value=self.settings.avatar_offset_y)
+        self.avatar_rotation_var = tk.DoubleVar(value=self.settings.avatar_rotation)
         self.performance_var = tk.BooleanVar(value=self.settings.performance_mode)
         self.performance_preset_var = tk.StringVar(value=self.settings.performance_preset)
         self.idle_motion_var = tk.BooleanVar(value=self.settings.idle_motion)
@@ -171,6 +238,11 @@ class AvatarCamApp(tk.Tk):
         self.pet_mirror_var = tk.BooleanVar(value=self.settings.pet_mirror)
         self.mouth_hold_var = tk.IntVar(value=self.settings.mouth_hold_ticks)
         self.auto_start_var = tk.BooleanVar(value=self.settings.auto_start_minimized)
+        self.scene_var = tk.StringVar(value=self.settings.active_scene)
+        self.hotkey_vars = {
+            action: tk.StringVar(value=self._hotkey_config().get(action, default))
+            for action, default in DEFAULT_HOTKEYS.items()
+        }
 
         ttk.Label(self.control_frame, text="Controles", style="Eyebrow.TLabel").grid(row=0, column=0, sticky="w")
         ttk.Label(self.control_frame, text="Painel da live", style="PanelTitle.TLabel").grid(row=1, column=0, sticky="w", pady=(0, 12))
@@ -181,13 +253,15 @@ class AvatarCamApp(tk.Tk):
         self.assets_tab = ttk.Frame(self.control_tabs, padding=12, style="Panel.TFrame")
         self.tuning_tab = ttk.Frame(self.control_tabs, padding=12, style="Panel.TFrame")
         self.obs_tab = ttk.Frame(self.control_tabs, padding=12, style="Panel.TFrame")
+        self.shortcuts_tab = ttk.Frame(self.control_tabs, padding=12, style="Panel.TFrame")
         self.system_tab = ttk.Frame(self.control_tabs, padding=12, style="Panel.TFrame")
-        for tab in (self.live_tab, self.assets_tab, self.tuning_tab, self.obs_tab, self.system_tab):
+        for tab in (self.live_tab, self.assets_tab, self.tuning_tab, self.obs_tab, self.shortcuts_tab, self.system_tab):
             tab.columnconfigure(0, weight=1)
         self.control_tabs.add(self.live_tab, text="Operacao")
         self.control_tabs.add(self.assets_tab, text="Assets")
         self.control_tabs.add(self.tuning_tab, text="Ajustes")
         self.control_tabs.add(self.obs_tab, text="OBS")
+        self.control_tabs.add(self.shortcuts_tab, text="Atalhos")
         self.control_tabs.add(self.system_tab, text="Sistema")
 
         live_actions = ttk.LabelFrame(self.live_tab, text="Live", padding=12)
@@ -287,8 +361,9 @@ class AvatarCamApp(tk.Tk):
         self._add_slider_to(avatar_frame, "Escala avatar", self.avatar_scale_var, 0.25, 2.5, 1)
         self._add_slider_to(avatar_frame, "Posicao X", self.avatar_x_var, -0.8, 0.8, 2)
         self._add_slider_to(avatar_frame, "Posicao Y", self.avatar_y_var, -0.8, 0.8, 3)
-        ttk.Checkbutton(avatar_frame, text="Movimento vertical automatico", variable=self.idle_motion_var, command=self._save_settings).grid(row=8, column=0, sticky="w", pady=(8, 0))
-        ttk.Checkbutton(avatar_frame, text="Sombra do avatar", variable=self.avatar_shadow_var, command=self._save_settings).grid(row=9, column=0, sticky="w", pady=(8, 0))
+        self._add_slider_to(avatar_frame, "Rotacao avatar", self.avatar_rotation_var, -35, 35, 4)
+        ttk.Checkbutton(avatar_frame, text="Movimento vertical automatico", variable=self.idle_motion_var, command=self._save_settings).grid(row=10, column=0, sticky="w", pady=(8, 0))
+        ttk.Checkbutton(avatar_frame, text="Sombra do avatar", variable=self.avatar_shadow_var, command=self._save_settings).grid(row=11, column=0, sticky="w", pady=(8, 0))
 
         pet_frame = ttk.LabelFrame(self.tuning_tab, text="Pet", padding=12)
         pet_frame.grid(row=2, column=0, sticky="ew")
@@ -357,6 +432,39 @@ class AvatarCamApp(tk.Tk):
         self.back_button.grid(row=2, column=0, sticky="ew", pady=4)
         ttk.Button(obs_actions, text="Assistente OBS", command=self._show_obs_assistant).grid(row=3, column=0, sticky="ew", pady=(8, 0))
 
+        scene_frame = ttk.LabelFrame(self.shortcuts_tab, text="Cenas", padding=12)
+        scene_frame.grid(row=0, column=0, sticky="ew", pady=(0, 10))
+        scene_frame.columnconfigure(0, weight=1)
+        scene_frame.columnconfigure(1, weight=1)
+        self.scene_select = ttk.Combobox(scene_frame, textvariable=self.scene_var, values=self._scene_names(), state="readonly")
+        self.scene_select.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 8))
+        self.scene_select.bind("<<ComboboxSelected>>", lambda _event: self._apply_scene(self.scene_var.get()))
+        ttk.Button(scene_frame, text="Aplicar cena", command=lambda: self._apply_scene(self.scene_var.get())).grid(row=1, column=0, sticky="ew", padx=(0, 4), pady=4)
+        ttk.Button(scene_frame, text="Salvar cena atual", command=lambda: self._save_scene(self.scene_var.get())).grid(row=1, column=1, sticky="ew", padx=(4, 0), pady=4)
+        ttk.Button(scene_frame, text="Nova cena", command=self._new_scene).grid(row=2, column=0, sticky="ew", padx=(0, 4), pady=4)
+        ttk.Button(scene_frame, text="Excluir cena", command=self._delete_scene).grid(row=2, column=1, sticky="ew", padx=(4, 0), pady=4)
+        self.scene_hint = ttk.Label(
+            scene_frame,
+            text="Cada cena salva posicao, escala, rotacao, fundo OBS, resolucao e composicao do pet.",
+            style="Body.TLabel",
+            wraplength=320,
+        )
+        self.scene_hint.grid(row=3, column=0, columnspan=2, sticky="w", pady=(8, 0))
+
+        hotkey_frame = ttk.LabelFrame(self.shortcuts_tab, text="Atalhos configuraveis", padding=12)
+        hotkey_frame.grid(row=1, column=0, sticky="ew")
+        hotkey_frame.columnconfigure(1, weight=1)
+        for row, (action, label) in enumerate(HOTKEY_ACTION_LABELS.items()):
+            ttk.Label(hotkey_frame, text=label, style="Body.TLabel").grid(row=row, column=0, sticky="w", padx=(0, 10), pady=4)
+            box = ttk.Combobox(hotkey_frame, textvariable=self.hotkey_vars[action], values=HOTKEY_CHOICES)
+            box.grid(row=row, column=1, sticky="ew", pady=4)
+        hotkey_buttons = ttk.Frame(hotkey_frame, style="Panel.TFrame")
+        hotkey_buttons.grid(row=len(HOTKEY_ACTION_LABELS), column=0, columnspan=2, sticky="ew", pady=(10, 0))
+        hotkey_buttons.columnconfigure(0, weight=1)
+        hotkey_buttons.columnconfigure(1, weight=1)
+        ttk.Button(hotkey_buttons, text="Salvar atalhos", command=self._save_hotkeys).grid(row=0, column=0, sticky="ew", padx=(0, 4))
+        ttk.Button(hotkey_buttons, text="Restaurar padrao", command=self._reset_hotkeys).grid(row=0, column=1, sticky="ew", padx=(4, 0))
+
         performance_frame = ttk.LabelFrame(self.system_tab, text="Performance e tema", padding=12)
         performance_frame.grid(row=0, column=0, sticky="ew", pady=(0, 10))
         performance_frame.columnconfigure(0, weight=1)
@@ -398,10 +506,7 @@ class AvatarCamApp(tk.Tk):
             style="Body.TLabel",
         )
         self.avatar_label.grid(row=4, column=0, sticky="w", pady=(8, 0))
-        hotkey_text = "Hotkeys: F8 mic, F9 teste, F10 controles, F11 OBS, F12 pet"
-        if self.hotkeys.available:
-            hotkey_text += " | globais ativos"
-        self.hotkey_label = ttk.Label(self.control_frame, text=hotkey_text, style="Body.TLabel")
+        self.hotkey_label = ttk.Label(self.control_frame, text="Atalhos configuraveis", style="Body.TLabel")
         self.hotkey_label.grid(row=5, column=0, sticky="w", pady=(8, 0))
 
     def _sync_control_scroll(self, _event: tk.Event) -> None:
@@ -475,20 +580,207 @@ class AvatarCamApp(tk.Tk):
         self.control_canvas.configure(bg=c["bg"])
 
     def _bind_hotkeys(self) -> None:
-        self.bind("<F8>", lambda _event: self._toggle_microphone())
-        self.bind("<F9>", lambda _event: self._trigger_test())
-        self.bind("<F10>", lambda _event: self.show_controls())
-        self.bind("<F11>", lambda _event: self._toggle_obs_window())
-        self.bind("<F12>", lambda _event: self._toggle_pet())
-        for index in range(1, 5):
-            self.bind(f"<Control-Key-{index}>", lambda _event, i=index: self._load_expression_by_index(i))
-        self.hotkeys.register("f8", lambda: self.after(0, self._toggle_microphone))
-        self.hotkeys.register("f9", lambda: self.after(0, self._trigger_test))
-        self.hotkeys.register("f10", lambda: self.after(0, self.show_controls))
-        self.hotkeys.register("f11", lambda: self.after(0, self._toggle_obs_window))
-        self.hotkeys.register("f12", lambda: self.after(0, self._toggle_pet))
-        for index in range(1, 5):
-            self.hotkeys.register(f"ctrl+{index}", lambda i=index: self.after(0, lambda: self._load_expression_by_index(i)))
+        for sequence in self.local_hotkey_sequences:
+            self.unbind_all(sequence)
+        self.local_hotkey_sequences.clear()
+        self.hotkeys.clear()
+
+        used_sequences: set[str] = set()
+        used_hotkeys: set[str] = set()
+        for action, hotkey in self._hotkey_config().items():
+            normalized = self._normalize_hotkey(hotkey)
+            if not normalized or normalized in used_hotkeys:
+                continue
+            used_hotkeys.add(normalized)
+            sequence = self._tk_sequence_for_hotkey(normalized)
+            if sequence and sequence not in used_sequences:
+                self.bind_all(sequence, lambda _event, selected=action: self._run_hotkey_action(selected))
+                self.local_hotkey_sequences.append(sequence)
+                used_sequences.add(sequence)
+            self.hotkeys.register(normalized, lambda selected=action: self.after(0, lambda: self._run_hotkey_action(selected)))
+        self._refresh_hotkey_label()
+
+    def _hotkey_config(self) -> dict[str, str]:
+        configured = self.settings.hotkeys or {}
+        return {
+            action: self._normalize_hotkey(str(configured.get(action, default)))
+            for action, default in DEFAULT_HOTKEYS.items()
+        }
+
+    def _normalize_hotkey(self, value: str) -> str:
+        return value.strip().lower().replace(" ", "").replace("control+", "ctrl+")
+
+    def _tk_sequence_for_hotkey(self, hotkey: str) -> str | None:
+        parts = [part for part in hotkey.split("+") if part]
+        if not parts:
+            return None
+        key = parts[-1]
+        modifiers = []
+        for part in parts[:-1]:
+            if part == "ctrl":
+                modifiers.append("Control")
+            elif part == "alt":
+                modifiers.append("Alt")
+            elif part == "shift":
+                modifiers.append("Shift")
+            else:
+                return None
+        if key.startswith("f") and key[1:].isdigit():
+            key_name = key.upper()
+        elif len(key) == 1:
+            key_name = f"Key-{key}"
+        else:
+            key_name = key
+        return "<" + "-".join([*modifiers, key_name]) + ">"
+
+    def _run_hotkey_action(self, action: str) -> None:
+        if action == "toggle_mic":
+            self._toggle_microphone()
+        elif action == "test_speech":
+            self._trigger_test()
+        elif action == "show_controls":
+            self.show_controls()
+        elif action == "toggle_obs":
+            self._toggle_obs_window()
+        elif action == "toggle_pet":
+            self._toggle_pet()
+        elif action == "live_mode":
+            self._enable_live_mode()
+        elif action.startswith("scene_"):
+            try:
+                self._load_scene_by_index(int(action.rsplit("_", 1)[1]))
+            except ValueError:
+                return
+
+    def _save_hotkeys(self) -> None:
+        self.settings.hotkeys = {
+            action: self._normalize_hotkey(variable.get())
+            for action, variable in self.hotkey_vars.items()
+        }
+        self._bind_hotkeys()
+        self._save_settings_file()
+        self._set_status("Atalhos salvos", 2200)
+
+    def _reset_hotkeys(self) -> None:
+        for action, default in DEFAULT_HOTKEYS.items():
+            self.hotkey_vars[action].set(default)
+        self._save_hotkeys()
+
+    def _refresh_hotkey_label(self) -> None:
+        if not hasattr(self, "hotkey_label"):
+            return
+        enabled = sum(1 for value in self._hotkey_config().values() if value)
+        scope = "globais ativos" if self.hotkeys.available else "fallback com janela focada"
+        self.hotkey_label.configure(text=f"Atalhos: {enabled} configurados | {scope}")
+
+    def _scene_names(self) -> tuple[str, ...]:
+        scenes = self.settings.scenes or {}
+        defaults = [f"Cena {index}" for index in range(1, 5)]
+        names = sorted(set(scenes.keys()) | set(defaults) | {self.settings.active_scene})
+        return tuple(name for name in names if name)
+
+    def _current_scene_data(self) -> dict:
+        return {
+            "avatar_scale": float(self.avatar_scale_var.get()),
+            "avatar_offset_x": float(self.avatar_x_var.get()),
+            "avatar_offset_y": float(self.avatar_y_var.get()),
+            "avatar_rotation": float(self.avatar_rotation_var.get()),
+            "animation_fps": int(float(self.animation_fps_var.get())),
+            "idle_motion": self.idle_motion_var.get(),
+            "avatar_shadow": self.avatar_shadow_var.get(),
+            "obs_background": self.obs_background_var.get(),
+            "obs_resolution": self.obs_resolution_var.get(),
+            "obs_borderless": self.obs_borderless_var.get(),
+            "obs_always_on_top": self.obs_top_var.get(),
+            "pet_enabled": self.pet_enabled_var.get(),
+            "pet_size": float(self.pet_size_var.get()),
+            "pet_offset_x": float(self.pet_x_var.get()),
+            "pet_offset_y": float(self.pet_y_var.get()),
+            "pet_reaction": self.pet_reaction_var.get(),
+            "pet_reaction_strength": float(self.pet_strength_var.get()),
+            "pet_layer": self.pet_layer_var.get(),
+            "pet_opacity": float(self.pet_opacity_var.get()),
+            "pet_mirror": self.pet_mirror_var.get(),
+        }
+
+    def _refresh_scene_select(self) -> None:
+        if hasattr(self, "scene_select"):
+            self.scene_select.configure(values=self._scene_names())
+
+    def _save_scene(self, name: str) -> None:
+        name = (name or "").strip() or "Cena 1"
+        scenes = self.settings.scenes or {}
+        scenes[name] = self._current_scene_data()
+        self.settings.scenes = scenes
+        self.settings.active_scene = name
+        self.scene_var.set(name)
+        self._refresh_scene_select()
+        self._save_settings_file()
+        self._set_status(f"Cena salva: {name}", 2400)
+
+    def _new_scene(self) -> None:
+        name = simpledialog.askstring("Nova cena", "Nome da cena:", initialvalue=f"Cena {len(self._scene_names()) + 1}")
+        if not name or not name.strip():
+            return
+        self.scene_var.set(name.strip())
+        self._save_scene(name.strip())
+
+    def _delete_scene(self) -> None:
+        name = self.scene_var.get().strip()
+        scenes = self.settings.scenes or {}
+        if name not in scenes:
+            messagebox.showinfo("Excluir cena", "Essa cena ainda nao foi salva.")
+            return
+        if not messagebox.askyesno("Excluir cena", f"Excluir a cena {name}?"):
+            return
+        scenes.pop(name, None)
+        self.settings.scenes = scenes
+        fallback_names = sorted(set(scenes.keys()) | {f"Cena {index}" for index in range(1, 5)})
+        fallback = next(iter(fallback_names), "Cena 1")
+        self.settings.active_scene = fallback
+        self.scene_var.set(fallback)
+        self._refresh_scene_select()
+        self._save_settings_file()
+        self._set_status(f"Cena excluida: {name}", 2400)
+
+    def _load_scene_by_index(self, index: int) -> None:
+        names = self._scene_names()
+        if 0 <= index - 1 < len(names):
+            self._apply_scene(names[index - 1])
+
+    def _apply_scene(self, name: str) -> None:
+        name = (name or "").strip()
+        scene = (self.settings.scenes or {}).get(name)
+        if not scene:
+            self.scene_var.set(name or self.settings.active_scene)
+            self._set_status("Cena ainda nao salva", 2200)
+            return
+
+        self.scene_var.set(name)
+        self.avatar_scale_var.set(float(scene.get("avatar_scale", self.avatar_scale_var.get())))
+        self.avatar_x_var.set(float(scene.get("avatar_offset_x", self.avatar_x_var.get())))
+        self.avatar_y_var.set(float(scene.get("avatar_offset_y", self.avatar_y_var.get())))
+        self.avatar_rotation_var.set(float(scene.get("avatar_rotation", self.avatar_rotation_var.get())))
+        self.animation_fps_var.set(int(scene.get("animation_fps", self.animation_fps_var.get())))
+        self.idle_motion_var.set(bool(scene.get("idle_motion", self.idle_motion_var.get())))
+        self.avatar_shadow_var.set(bool(scene.get("avatar_shadow", self.avatar_shadow_var.get())))
+        self.obs_background_var.set(scene.get("obs_background", self.obs_background_var.get()))
+        self.obs_resolution_var.set(scene.get("obs_resolution", self.obs_resolution_var.get()))
+        self.obs_borderless_var.set(bool(scene.get("obs_borderless", self.obs_borderless_var.get())))
+        self.obs_top_var.set(bool(scene.get("obs_always_on_top", self.obs_top_var.get())))
+        self.pet_enabled_var.set(bool(scene.get("pet_enabled", self.pet_enabled_var.get())))
+        self.pet_size_var.set(float(scene.get("pet_size", self.pet_size_var.get())))
+        self.pet_x_var.set(float(scene.get("pet_offset_x", self.pet_x_var.get())))
+        self.pet_y_var.set(float(scene.get("pet_offset_y", self.pet_y_var.get())))
+        self.pet_reaction_var.set(scene.get("pet_reaction", self.pet_reaction_var.get()))
+        self.pet_strength_var.set(float(scene.get("pet_reaction_strength", self.pet_strength_var.get())))
+        self.pet_layer_var.set(scene.get("pet_layer", self.pet_layer_var.get()))
+        self.pet_opacity_var.set(float(scene.get("pet_opacity", self.pet_opacity_var.get())))
+        self.pet_mirror_var.set(bool(scene.get("pet_mirror", self.pet_mirror_var.get())))
+        self.settings.active_scene = name
+        self._save_settings()
+        self._save_obs_settings()
+        self._set_status(f"Cena aplicada: {name}", 2200)
 
     def _profile_names(self) -> tuple[str, ...]:
         profiles = self.settings.profiles or {}
@@ -709,6 +1001,7 @@ class AvatarCamApp(tk.Tk):
                 "avatar_scale": float(self.avatar_scale_var.get()),
                 "avatar_offset_x": float(self.avatar_x_var.get()),
                 "avatar_offset_y": float(self.avatar_y_var.get()),
+                "avatar_rotation": float(self.avatar_rotation_var.get()),
                 "idle_motion": self.idle_motion_var.get(),
                 "avatar_shadow": self.avatar_shadow_var.get(),
                 "pet_enabled": self.pet_enabled_var.get(),
@@ -750,6 +1043,7 @@ class AvatarCamApp(tk.Tk):
         self.avatar_scale_var.set(float(settings.get("avatar_scale", self.avatar_scale_var.get())))
         self.avatar_x_var.set(float(settings.get("avatar_offset_x", self.avatar_x_var.get())))
         self.avatar_y_var.set(float(settings.get("avatar_offset_y", self.avatar_y_var.get())))
+        self.avatar_rotation_var.set(float(settings.get("avatar_rotation", self.avatar_rotation_var.get())))
         self.idle_motion_var.set(bool(settings.get("idle_motion", self.idle_motion_var.get())))
         self.avatar_shadow_var.set(bool(settings.get("avatar_shadow", self.avatar_shadow_var.get())))
         self.pet_enabled_var.set(bool(settings.get("pet_enabled", self.pet_enabled_var.get())))
@@ -921,6 +1215,7 @@ class AvatarCamApp(tk.Tk):
             self.settings.avatar_scale,
             self.settings.avatar_offset_x,
             self.settings.avatar_offset_y,
+            self.settings.avatar_rotation,
         )
         if self.obs_window and self.obs_window.winfo_exists():
             self.obs_window.set_image_sets(
@@ -957,6 +1252,7 @@ class AvatarCamApp(tk.Tk):
             "avatar_scale": float(self.avatar_scale_var.get()),
             "avatar_offset_x": float(self.avatar_x_var.get()),
             "avatar_offset_y": float(self.avatar_y_var.get()),
+            "avatar_rotation": float(self.avatar_rotation_var.get()),
             "pet_enabled": self.pet_enabled_var.get(),
             "pet_size": float(self.pet_size_var.get()),
             "pet_offset_x": float(self.pet_x_var.get()),
@@ -1117,6 +1413,7 @@ class AvatarCamApp(tk.Tk):
         self.avatar_scale_var.set(float(profile.get("avatar_scale", self.settings.avatar_scale)))
         self.avatar_x_var.set(float(profile.get("avatar_offset_x", self.settings.avatar_offset_x)))
         self.avatar_y_var.set(float(profile.get("avatar_offset_y", self.settings.avatar_offset_y)))
+        self.avatar_rotation_var.set(float(profile.get("avatar_rotation", self.settings.avatar_rotation)))
         self.pet_enabled_var.set(bool(profile.get("pet_enabled", self.settings.pet_enabled)))
         self.pet_size_var.set(float(profile.get("pet_size", self.settings.pet_size)))
         self.pet_x_var.set(float(profile.get("pet_offset_x", self.settings.pet_offset_x)))
@@ -1176,6 +1473,7 @@ class AvatarCamApp(tk.Tk):
         self.avatar_scale_var.set(self.settings.avatar_scale)
         self.avatar_x_var.set(self.settings.avatar_offset_x)
         self.avatar_y_var.set(self.settings.avatar_offset_y)
+        self.avatar_rotation_var.set(self.settings.avatar_rotation)
         self.performance_var.set(self.settings.performance_mode)
         self.performance_preset_var.set(self.settings.performance_preset)
         self.idle_motion_var.set(self.settings.idle_motion)
@@ -1192,6 +1490,11 @@ class AvatarCamApp(tk.Tk):
         self.pet_mirror_var.set(self.settings.pet_mirror)
         self.mouth_hold_var.set(self.settings.mouth_hold_ticks)
         self.auto_start_var.set(self.settings.auto_start_minimized)
+        self.scene_var.set(self.settings.active_scene)
+        self._refresh_scene_select()
+        for action, value in self._hotkey_config().items():
+            self.hotkey_vars[action].set(value)
+        self._bind_hotkeys()
 
         self.microphone.set_device(self.settings.microphone_device)
         self.detector.sensitivity = self.settings.sensitivity
@@ -1234,6 +1537,7 @@ class AvatarCamApp(tk.Tk):
         self.settings.avatar_scale = float(self.avatar_scale_var.get())
         self.settings.avatar_offset_x = float(self.avatar_x_var.get())
         self.settings.avatar_offset_y = float(self.avatar_y_var.get())
+        self.settings.avatar_rotation = float(self.avatar_rotation_var.get())
         self.settings.performance_mode = self.performance_var.get()
         self.settings.performance_preset = self.performance_preset_var.get()
         self.settings.idle_motion = self.idle_motion_var.get()
@@ -1259,6 +1563,7 @@ class AvatarCamApp(tk.Tk):
             self.settings.avatar_scale,
             self.settings.avatar_offset_x,
             self.settings.avatar_offset_y,
+            self.settings.avatar_rotation,
         )
         self.avatar_canvas.set_visual_options(
             self.settings.idle_motion,
@@ -1279,6 +1584,7 @@ class AvatarCamApp(tk.Tk):
                 self.settings.avatar_scale,
                 self.settings.avatar_offset_x,
                 self.settings.avatar_offset_y,
+                self.settings.avatar_rotation,
             )
             self.obs_window.set_visual_options(
                 self.settings.idle_motion,
@@ -1323,6 +1629,7 @@ class AvatarCamApp(tk.Tk):
                 self.settings.avatar_scale,
                 self.settings.avatar_offset_x,
                 self.settings.avatar_offset_y,
+                self.settings.avatar_rotation,
             )
             self.obs_window.set_visual_options(
                 self.settings.idle_motion,
