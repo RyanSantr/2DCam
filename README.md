@@ -11,13 +11,16 @@ Aplicacao desktop em Python onde sua camera e substituida por um avatar 2D anima
 - Troca automatica entre idle e fala.
 - Botao para ativar/desativar microfone.
 - Botoes para escolher imagens idle e imagens falando.
-- Barra de volume em tempo real.
+- Medidor de volume opcional, desligado por padrao para uma tela mais limpa.
 - Sensibilidade e suavizacao ajustaveis.
 - FPS da animacao ajustavel.
 - Perfis de avatar para lives diferentes.
+- Gerenciamento de perfis: salvar, criar, duplicar, renomear, excluir e restaurar backup.
+- Backup automatico antes de alteracoes importantes em perfis.
 - Importacao automatica por pasta.
 - Importacao copia os assets para a biblioteca local do app.
 - Exportar/importar `.avatarpack`.
+- Validador de assets para detectar arquivos ausentes, pesados ou grandes demais.
 - Sistema de expressoes com atalhos `Ctrl+1` ate `Ctrl+4`.
 - Estados de fala baixa, media e alta por volume.
 - Calibracao automatica do ruido ambiente.
@@ -40,6 +43,7 @@ Aplicacao desktop em Python onde sua camera e substituida por um avatar 2D anima
 - Opcao de iniciar minimizado na bandeja.
 - Logs locais rotativos para diagnostico.
 - Botao para apagar configuracoes, perfis, caminhos de imagens e logs.
+- Reset local corrige bloqueio de arquivos de log no Windows antes de apagar dados.
 - Modo escuro/claro.
 - Fundo personalizavel.
 - Botao de teste de fala.
@@ -69,14 +73,17 @@ Aplicacao desktop em Python onde sua camera e substituida por um avatar 2D anima
 |   |   |-- app_log.py
 |   |   |-- avatar_pack.py
 |   |   |-- hotkeys.py
+|   |   |-- profile_backup.py
 |   |   |-- settings.py
 |   |   |-- speech_detector.py
 |   |-- ui
 |       |-- app_window.py
 |       |-- avatar_canvas.py
 |       |-- obs_window.py
+|       |-- setup_wizard.py
 |       |-- tray.py
 |       |-- theme.py
+|       |-- voice_meter.py
 |-- scripts
     |-- run.bat
     |-- build_exe.bat
@@ -122,6 +129,7 @@ dist\AvatarCam2D.exe
 5. Ao parar de falar, ele volta para idle.
 6. Ajuste **Sensibilidade** se ele falar sozinho ou demorar para reagir.
 7. Use **Teste de fala** para testar a animacao sem microfone.
+8. Use **Validar assets** antes da live para conferir se os arquivos ainda existem e estao leves.
 
 ## Pasta De Avatar Recomendada
 
@@ -206,6 +214,16 @@ Expressoes:
 
 Use **Exportar** para gerar um arquivo `.avatarpack` com imagens e configuracoes principais. Use **Importar .avatarpack** para restaurar em outro PC ou compartilhar seu avatar.
 
+## Perfis E Backups
+
+Use a aba **Operacao** para criar, salvar, duplicar, renomear ou excluir perfis. Antes de salvar, duplicar, renomear ou excluir, o app cria um backup local em:
+
+```text
+%USERPROFILE%\.avatarcam_2d\backups
+```
+
+Se algo ficar errado, use **Restaurar backup** no painel de perfil.
+
 ## Calibracao
 
 Use **Calibrar ruido ambiente** antes da live. Fique em silencio por 3 segundos. O app mede o ruido do seu quarto, teclado e ventoinhas, depois ajusta a sensibilidade automaticamente.
@@ -218,6 +236,7 @@ Use os controles:
 - **Posicao X** para mover para esquerda/direita.
 - **Posicao Y** para mover para cima/baixo.
 - **Modo performance** para pausar o preview no painel principal e renderizar apenas a janela OBS.
+- **Mostrar medidor do microfone** para exibir/ocultar a animacao de volume no painel.
 - **Preset performance** para escolher entre qualidade e baixo uso de CPU.
 - **Movimento vertical automatico** para ligar/desligar o sobe e desce do avatar.
 - **Sombra do avatar** para dar leitura melhor no OBS.

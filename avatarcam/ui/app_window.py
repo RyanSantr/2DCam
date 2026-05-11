@@ -148,6 +148,8 @@ class AvatarCamApp(tk.Tk):
         self.control_window = self.control_canvas.create_window((0, 0), window=self.control_frame, anchor="nw")
         self.control_frame.bind("<Configure>", self._sync_control_scroll)
         self.control_canvas.bind("<Configure>", self._sync_control_width)
+        self.control_canvas.bind("<Enter>", self._bind_control_mousewheel)
+        self.control_canvas.bind("<Leave>", self._unbind_control_mousewheel)
         self.control_frame.columnconfigure(0, weight=1)
         self.control_frame.rowconfigure(2, weight=1)
 
@@ -274,6 +276,7 @@ class AvatarCamApp(tk.Tk):
         ttk.Button(pack_row, text="Exportar", command=self._export_pack).grid(row=0, column=1, sticky="ew", padx=(4, 0))
         self.clear_images_button = ttk.Button(library_frame, text="Limpar imagens do avatar", command=self._clear_images)
         self.clear_images_button.grid(row=2, column=0, sticky="ew", pady=4)
+        ttk.Button(library_frame, text="Validar assets", command=self._validate_assets).grid(row=3, column=0, sticky="ew", pady=(8, 0))
 
         audio_frame = ttk.LabelFrame(self.tuning_tab, text="Audio e fala", padding=12)
         audio_frame.grid(row=0, column=0, sticky="ew", pady=(0, 10))
@@ -424,6 +427,16 @@ class AvatarCamApp(tk.Tk):
         for label in (getattr(self, "status_label", None), getattr(self, "avatar_label", None), getattr(self, "hotkey_label", None)):
             if label is not None:
                 label.configure(wraplength=wrap)
+
+    def _bind_control_mousewheel(self, _event: tk.Event) -> None:
+        self.bind_all("<MouseWheel>", self._scroll_controls)
+
+    def _unbind_control_mousewheel(self, _event: tk.Event) -> None:
+        self.unbind_all("<MouseWheel>")
+
+    def _scroll_controls(self, event: tk.Event) -> None:
+        direction = -1 if event.delta > 0 else 1
+        self.control_canvas.yview_scroll(direction * 3, "units")
 
     def _sync_meter_visibility(self) -> None:
         if self.show_voice_meter_var.get():
@@ -832,6 +845,69 @@ class AvatarCamApp(tk.Tk):
         self.pet_speaking_images = []
         self.pet_loud_images = []
         self._save_image_sets()
+
+    def _all_asset_paths(self) -> list[str]:
+        return [
+            *self.idle_images,
+            *self.speaking_images,
+            *self.speaking_low_images,
+            *self.speaking_mid_images,
+            *self.speaking_high_images,
+            *self.blink_images,
+            *self.pet_images,
+            *self.pet_speaking_images,
+            *self.pet_loud_images,
+        ]
+
+    def _validate_assets(self) -> None:
+        paths = self._all_asset_paths()
+        if not paths:
+            messagebox.showinfo("Validar assets", "Nenhum asset carregado ainda.")
+            return
+
+        missing = [path for path in paths if not Path(path).is_file()]
+        heavy: list[str] = []
+        oversized: list[str] = []
+        for path in paths:
+            file_path = Path(path)
+            if not file_path.is_file():
+                continue
+            try:
+                if file_path.stat().st_size > 8 * 1024 * 1024:
+                    heavy.append(file_path.name)
+            except OSError:
+                continue
+            if file_path.suffix.lower() != ".png":
+                continue
+            try:
+                from PIL import Image
+
+                with Image.open(file_path) as image:
+                    if max(image.size) > 2000:
+                        oversized.append(f"{file_path.name} ({image.size[0]}x{image.size[1]})")
+            except Exception:
+                continue
+
+        if not self.idle_images:
+            missing.append("Estado idle sem imagem")
+        if not (self.speaking_images or self.speaking_low_images or self.speaking_mid_images or self.speaking_high_images):
+            missing.append("Estado de fala sem imagem")
+
+        issues = []
+        if missing:
+            issues.append("Problemas:\n" + "\n".join(f"- {Path(item).name}" for item in missing[:8]))
+        if heavy:
+            issues.append("Arquivos pesados:\n" + "\n".join(f"- {item}" for item in heavy[:8]))
+        if oversized:
+            issues.append("PNG muito grande:\n" + "\n".join(f"- {item}" for item in oversized[:8]))
+
+        if issues:
+            messagebox.showwarning("Validar assets", "\n\n".join(issues))
+            self._set_status("Assets precisam de atencao", 2600)
+            return
+
+        messagebox.showinfo("Validar assets", "Assets prontos para live. Nenhum problema encontrado.")
+        self._set_status("Assets validados", 2200)
 
     def _pick_images(self, title: str) -> list[str]:
         return list(

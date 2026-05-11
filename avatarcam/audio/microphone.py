@@ -33,7 +33,7 @@ class MicrophoneInput:
             ) from exc
 
         self._sounddevice = sd
-        self._stream = sd.RawInputStream(
+        stream = sd.RawInputStream(
             device=self.device_index,
             channels=1,
             samplerate=self.samplerate,
@@ -41,7 +41,13 @@ class MicrophoneInput:
             dtype="float32",
             callback=self._callback,
         )
-        self._stream.start()
+        try:
+            stream.start()
+        except Exception:
+            stream.close()
+            self._stream = None
+            raise
+        self._stream = stream
 
     def set_device(self, device_index: int | None) -> None:
         restart = self.is_running
@@ -70,8 +76,10 @@ class MicrophoneInput:
         if self._stream is None:
             return
 
-        self._stream.stop()
-        self._stream.close()
+        try:
+            self._stream.stop()
+        finally:
+            self._stream.close()
         self._stream = None
         self._clear_queue()
 
@@ -104,7 +112,10 @@ class MicrophoneInput:
                 self._levels.get_nowait()
             except queue.Empty:
                 pass
-        self._levels.put_nowait(level)
+        try:
+            self._levels.put_nowait(level)
+        except queue.Full:
+            pass
 
     def _clear_queue(self) -> None:
         while not self._levels.empty():

@@ -102,10 +102,16 @@ def import_avatar_pack(pack_path: str) -> dict:
         if target.exists():
             shutil.rmtree(target)
         target.mkdir(parents=True, exist_ok=True)
+        target_root = target.resolve()
         for member in archive.infolist():
             destination = (target / member.filename).resolve()
-            if not str(destination).startswith(str(target.resolve())):
+            try:
+                destination.relative_to(target_root)
+            except ValueError as exc:
                 raise ValueError("Avatarpack contem caminho invalido")
+            if member.is_dir():
+                destination.mkdir(parents=True, exist_ok=True)
+                continue
             archive.extract(member, target)
 
     return {
