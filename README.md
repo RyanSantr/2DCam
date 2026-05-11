@@ -2,6 +2,8 @@
 
 Aplicacao desktop em Python onde sua camera e substituida por um avatar 2D animado. O app captura o microfone, detecta fala por volume em tempo real e alterna automaticamente entre animacao idle e animacao falando.
 
+Autor: **Dev RyanSantr**
+
 ## O Que Vem Pronto
 
 - Janela desktop nativa, sem navegador e sem servidor web.
@@ -301,6 +303,12 @@ Ao fechar a janela principal, o app tenta ficar na bandeja do Windows. Pelo menu
 - sair do app.
 
 Se o Windows bloquear o tray, o app continua funcionando normalmente.
+
+## Licenca
+
+Este projeto e publico sob a licenca MIT.
+
+Copyright (c) 2026 **Dev RyanSantr**.
 
 ## Privacidade E Logs
 
