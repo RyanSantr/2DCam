@@ -214,14 +214,17 @@ class AvatarCamApp(tk.Tk):
         profile_frame.columnconfigure(0, weight=1)
         profile_frame.columnconfigure(1, weight=1)
         profile_frame.columnconfigure(2, weight=1)
+        profile_frame.columnconfigure(3, weight=1)
         self.profile_var = tk.StringVar(value=self.settings.active_profile)
         self.profile_select = ttk.Combobox(profile_frame, textvariable=self.profile_var, values=self._profile_names(), state="readonly")
-        self.profile_select.grid(row=0, column=0, columnspan=3, sticky="ew", pady=(0, 6))
+        self.profile_select.grid(row=0, column=0, columnspan=4, sticky="ew", pady=(0, 6))
         self.profile_select.bind("<<ComboboxSelected>>", lambda _event: self._load_profile(self.profile_var.get()))
         ttk.Button(profile_frame, text="Salvar", command=self._save_profile).grid(row=1, column=0, sticky="ew", padx=(0, 4))
         ttk.Button(profile_frame, text="Novo", command=self._new_profile).grid(row=1, column=1, sticky="ew", padx=4)
-        ttk.Button(profile_frame, text="Duplicar", command=self._duplicate_profile).grid(row=1, column=2, sticky="ew", padx=(4, 0))
-        ttk.Button(profile_frame, text="Restaurar ultimo backup", command=self._restore_latest_backup).grid(row=2, column=0, columnspan=3, sticky="ew", pady=(8, 0))
+        ttk.Button(profile_frame, text="Duplicar", command=self._duplicate_profile).grid(row=1, column=2, sticky="ew", padx=4)
+        ttk.Button(profile_frame, text="Renomear", command=self._rename_profile).grid(row=1, column=3, sticky="ew", padx=(4, 0))
+        ttk.Button(profile_frame, text="Excluir perfil", command=self._delete_profile).grid(row=2, column=0, columnspan=2, sticky="ew", pady=(8, 0), padx=(0, 4))
+        ttk.Button(profile_frame, text="Restaurar backup", command=self._restore_latest_backup).grid(row=2, column=2, columnspan=2, sticky="ew", pady=(8, 0), padx=(4, 0))
 
         expression_frame = ttk.LabelFrame(self.live_tab, text="Expressoes", padding=12)
         expression_frame.grid(row=2, column=0, sticky="ew")
@@ -488,6 +491,12 @@ class AvatarCamApp(tk.Tk):
         if isinstance(value, list):
             return [str(item) for item in value]
         return []
+
+    def _refresh_profile_select(self) -> None:
+        names = self._profile_names()
+        self.profile_select.configure(values=names)
+        if self.profile_var.get() not in names:
+            self.profile_var.set(self.settings.active_profile)
 
     def _set_status(self, text: str, hold_ms: int = 2200) -> None:
         self.status_label.configure(text=text)
@@ -895,7 +904,7 @@ class AvatarCamApp(tk.Tk):
         profiles[name] = self._current_profile_data()
         self.settings.profiles = profiles
         self.settings.active_profile = name
-        self.profile_select.configure(values=self._profile_names())
+        self._refresh_profile_select()
         self.settings.save()
         self._set_status(f"Perfil salvo: {name}", 2600)
 
@@ -959,9 +968,57 @@ class AvatarCamApp(tk.Tk):
         self.settings.profiles = profiles
         self.settings.active_profile = new_name
         self.profile_var.set(new_name)
-        self.profile_select.configure(values=self._profile_names())
+        self._refresh_profile_select()
         self.settings.save()
         self._set_status(f"Perfil duplicado: {new_name}", 2600)
+
+    def _rename_profile(self) -> None:
+        old_name = self._clean_profile_name(self.profile_var.get())
+        profiles = self.settings.profiles or {}
+        if old_name not in profiles:
+            messagebox.showinfo("Renomear perfil", "Salve o perfil atual antes de renomear.")
+            return
+
+        raw_name = simpledialog.askstring("Renomear perfil", "Novo nome do perfil:", initialvalue=old_name)
+        if not raw_name or not raw_name.strip():
+            return
+        new_name = self._clean_profile_name(raw_name)
+        if new_name == old_name:
+            return
+        if new_name in profiles and not messagebox.askyesno("Renomear perfil", f"Ja existe um perfil chamado {new_name}. Substituir?"):
+            return
+
+        create_settings_backup("antes_renomear_perfil")
+        profiles[new_name] = profiles.pop(old_name)
+        self.settings.profiles = profiles
+        self.settings.active_profile = new_name
+        self.profile_var.set(new_name)
+        self._refresh_profile_select()
+        self.settings.save()
+        self._set_status(f"Perfil renomeado: {old_name} -> {new_name}", 3000)
+
+    def _delete_profile(self) -> None:
+        name = self._clean_profile_name(self.profile_var.get())
+        profiles = self.settings.profiles or {}
+        if name not in profiles:
+            messagebox.showinfo("Excluir perfil", "Este perfil ainda nao esta salvo, entao nao ha o que excluir.")
+            return
+        if not messagebox.askyesno("Excluir perfil", f"Excluir o perfil {name}? Um backup sera criado antes."):
+            return
+
+        create_settings_backup("antes_excluir_perfil")
+        profiles.pop(name, None)
+        self.settings.profiles = profiles
+        fallback = next(iter(sorted(profiles)), "Default")
+        self.settings.active_profile = fallback
+        self.profile_var.set(fallback)
+        self._refresh_profile_select()
+        self.settings.save()
+        if fallback in profiles:
+            self._load_profile(fallback)
+        else:
+            self._save_settings()
+        self._set_status(f"Perfil excluido: {name}", 3000)
 
     def _load_profile(self, name: str) -> None:
         name = self._clean_profile_name(name)
