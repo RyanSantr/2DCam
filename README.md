@@ -2,7 +2,7 @@
 
 Aplicacao desktop em Python onde sua camera e substituida por um avatar 2D animado. O app captura o microfone, detecta fala por volume em tempo real e alterna automaticamente entre animacao idle e animacao falando.
 
-Autor: **Dev RyanSantr**
+Autor: ** RyanSantr**
 
 ## O Que Vem Pronto
 
