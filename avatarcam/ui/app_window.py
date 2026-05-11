@@ -41,6 +41,7 @@ class AvatarCamApp(tk.Tk):
         self.last_fps_time = 0.0
         self.render_fps = 0
         self.ui_tick = 0
+        self.status_hold_until = 0
         self.last_volume_percent = -1
         self.last_speaking = False
         self.obs_window: ObsOutputWindow | None = None
@@ -142,6 +143,7 @@ class AvatarCamApp(tk.Tk):
         self.control_frame.bind("<Configure>", self._sync_control_scroll)
         self.control_canvas.bind("<Configure>", self._sync_control_width)
         self.control_frame.columnconfigure(0, weight=1)
+        self.control_frame.rowconfigure(2, weight=1)
 
         self.sensitivity_var = tk.DoubleVar(value=self.settings.sensitivity)
         self.smoothing_var = tk.DoubleVar(value=self.settings.smoothing)
@@ -178,14 +180,14 @@ class AvatarCamApp(tk.Tk):
 
         self.control_tabs = ttk.Notebook(self.control_frame)
         self.control_tabs.grid(row=2, column=0, sticky="nsew")
-        self.live_tab = ttk.Frame(self.control_tabs, padding=12)
-        self.assets_tab = ttk.Frame(self.control_tabs, padding=12)
-        self.tuning_tab = ttk.Frame(self.control_tabs, padding=12)
-        self.obs_tab = ttk.Frame(self.control_tabs, padding=12)
-        self.system_tab = ttk.Frame(self.control_tabs, padding=12)
+        self.live_tab = ttk.Frame(self.control_tabs, padding=12, style="Panel.TFrame")
+        self.assets_tab = ttk.Frame(self.control_tabs, padding=12, style="Panel.TFrame")
+        self.tuning_tab = ttk.Frame(self.control_tabs, padding=12, style="Panel.TFrame")
+        self.obs_tab = ttk.Frame(self.control_tabs, padding=12, style="Panel.TFrame")
+        self.system_tab = ttk.Frame(self.control_tabs, padding=12, style="Panel.TFrame")
         for tab in (self.live_tab, self.assets_tab, self.tuning_tab, self.obs_tab, self.system_tab):
             tab.columnconfigure(0, weight=1)
-        self.control_tabs.add(self.live_tab, text="Operacao")
+        self.control_tabs.add(self.live_tab, text="Operação")
         self.control_tabs.add(self.assets_tab, text="Assets")
         self.control_tabs.add(self.tuning_tab, text="Ajustes")
         self.control_tabs.add(self.obs_tab, text="OBS")
@@ -400,6 +402,10 @@ class AvatarCamApp(tk.Tk):
 
     def _sync_control_width(self, event: tk.Event) -> None:
         self.control_canvas.itemconfigure(self.control_window, width=event.width)
+        wrap = max(260, event.width - 56)
+        for label in (getattr(self, "status_label", None), getattr(self, "avatar_label", None), getattr(self, "hotkey_label", None)):
+            if label is not None:
+                label.configure(wraplength=wrap)
 
     def _add_slider(self, label: str, variable: tk.DoubleVar, start: float, end: float, row: int) -> None:
         self._add_slider_to(self.tuning_tab, label, variable, start, end, row)
@@ -427,6 +433,13 @@ class AvatarCamApp(tk.Tk):
         self.style.configure("Strong.TLabel", foreground=c["text"], font=("Segoe UI", 11, "bold"))
         self.style.configure("Status.TLabel", foreground=c["text"], background=c["panel_2"], padding=12, font=("Segoe UI", 10, "bold"))
         self.style.configure("Horizontal.TProgressbar", background=c["meter"], troughcolor=c["panel_2"], bordercolor=c["line"])
+        self.style.configure("TNotebook", background=c["panel"], borderwidth=0, tabmargins=(0, 4, 0, 0))
+        self.style.configure("TNotebook.Tab", background=c["panel_2"], foreground=c["muted"], padding=(10, 8), font=("Segoe UI", 9, "bold"))
+        self.style.map(
+            "TNotebook.Tab",
+            background=[("selected", c["primary"]), ("active", c["panel_2"])],
+            foreground=[("selected", "#ffffff"), ("active", c["text"])],
+        )
         self.stage_frame.configure(style="Panel.TFrame")
         self.control_frame.configure(style="Panel.TFrame")
         self.style.configure("Panel.TFrame", background=c["panel"])
@@ -454,6 +467,26 @@ class AvatarCamApp(tk.Tk):
         names = sorted(set(profiles.keys()) | {self.settings.active_profile, "Default"})
         return tuple(names)
 
+    def _clean_profile_name(self, name: str | None) -> str:
+        cleaned = (name or "").strip()
+        return cleaned or "Default"
+
+    def _profile_list(self, profile: dict, key: str) -> list[str]:
+        value = profile.get(key, [])
+        if isinstance(value, list):
+            return [str(item) for item in value]
+        return []
+
+    def _set_status(self, text: str, hold_ms: int = 2200) -> None:
+        self.status_label.configure(text=text)
+        self.status_hold_until = self._clock_ms() + hold_ms if hold_ms > 0 else 0
+
+    def _status_is_held(self) -> bool:
+        return self.status_hold_until > self._clock_ms()
+
+    def _clock_ms(self) -> int:
+        return int(self.tk.call("clock", "milliseconds"))
+
     def _expression_names(self) -> tuple[str, ...]:
         expressions = self.settings.expressions or {}
         names = sorted(set(expressions.keys()) | {self.settings.active_expression, "Default"})
@@ -464,7 +497,7 @@ class AvatarCamApp(tk.Tk):
             self.microphone.stop()
             self.detector.reset()
             self.mic_button.configure(text="Ativar microfone")
-            self.status_label.configure(text="Microfone desligado")
+            self._set_status("Microfone desligado", 1400)
             return
 
         try:
@@ -479,7 +512,7 @@ class AvatarCamApp(tk.Tk):
             return
 
         self.mic_button.configure(text="Desativar microfone")
-        self.status_label.configure(text="Ouvindo microfone")
+        self._set_status("Ouvindo microfone", 1200)
 
     def _change_microphone(self) -> None:
         selected = self.microphone_var.get()
@@ -492,7 +525,7 @@ class AvatarCamApp(tk.Tk):
             messagebox.showerror("Microfone", f"Nao foi possivel trocar microfone:\n{exc}")
             return
         self.settings.save()
-        self.status_label.configure(text=f"Microfone: {selected}")
+        self._set_status(f"Microfone: {selected}")
 
     def _apply_performance_preset(self) -> None:
         preset = self.performance_preset_var.get()
@@ -519,7 +552,7 @@ class AvatarCamApp(tk.Tk):
     def _toggle_pet(self) -> None:
         self.pet_enabled_var.set(not self.pet_enabled_var.get())
         self._save_settings()
-        self.status_label.configure(text="Pet ligado" if self.pet_enabled_var.get() else "Pet oculto")
+        self._set_status("Pet ligado" if self.pet_enabled_var.get() else "Pet oculto")
 
     def _enable_live_mode(self) -> None:
         self.performance_preset_var.set("ultra")
@@ -602,7 +635,7 @@ class AvatarCamApp(tk.Tk):
             return
         export_avatar_pack(
             path,
-            self.profile_var.get() or "Avatar",
+            self._clean_profile_name(self.profile_var.get()) or "Avatar",
             self._current_image_sets(),
             {
                 "sensitivity": float(self.sensitivity_var.get()),
@@ -625,7 +658,7 @@ class AvatarCamApp(tk.Tk):
                 "mouth_hold_ticks": int(float(self.mouth_hold_var.get())),
             },
         )
-        self.status_label.configure(text="Avatarpack exportado")
+        self._set_status("Avatarpack exportado")
 
     def _import_pack(self) -> None:
         path = filedialog.askopenfilename(
@@ -668,7 +701,7 @@ class AvatarCamApp(tk.Tk):
         self._save_settings()
         self._save_image_sets()
         self._save_profile()
-        self.status_label.configure(text="Avatarpack importado")
+        self._set_status("Avatarpack importado")
 
     def _current_image_sets(self) -> dict:
         return {
@@ -780,18 +813,19 @@ class AvatarCamApp(tk.Tk):
         return f"Idle: {len(self.idle_images)} | Fala: {len(self.speaking_images)} | Niveis: {level_count} | Piscar: {len(self.blink_images)} | Pet: {pet_count}"
 
     def _save_profile(self) -> None:
-        name = self.profile_var.get() or "Default"
+        name = self._clean_profile_name(self.profile_var.get())
+        self.profile_var.set(name)
         profiles = self.settings.profiles or {}
         profiles[name] = {
-            "idle_images": self.idle_images,
-            "speaking_images": self.speaking_images,
-            "speaking_low_images": self.speaking_low_images,
-            "speaking_mid_images": self.speaking_mid_images,
-            "speaking_high_images": self.speaking_high_images,
-            "blink_images": self.blink_images,
-            "pet_images": self.pet_images,
-            "pet_speaking_images": self.pet_speaking_images,
-            "pet_loud_images": self.pet_loud_images,
+            "idle_images": list(self.idle_images),
+            "speaking_images": list(self.speaking_images),
+            "speaking_low_images": list(self.speaking_low_images),
+            "speaking_mid_images": list(self.speaking_mid_images),
+            "speaking_high_images": list(self.speaking_high_images),
+            "blink_images": list(self.blink_images),
+            "pet_images": list(self.pet_images),
+            "pet_speaking_images": list(self.pet_speaking_images),
+            "pet_loud_images": list(self.pet_loud_images),
             "sensitivity": float(self.sensitivity_var.get()),
             "smoothing": float(self.smoothing_var.get()),
             "animation_fps": int(float(self.animation_fps_var.get())),
@@ -816,7 +850,7 @@ class AvatarCamApp(tk.Tk):
         self.settings.active_profile = name
         self.profile_select.configure(values=self._profile_names())
         self.settings.save()
-        self.status_label.configure(text=f"Perfil salvo: {name}")
+        self._set_status(f"Perfil salvo: {name}", 2600)
 
     def _save_expression(self) -> None:
         name = self.expression_var.get() or "Default"
@@ -826,7 +860,7 @@ class AvatarCamApp(tk.Tk):
         self.settings.active_expression = name
         self.expression_select.configure(values=self._expression_names())
         self.settings.save()
-        self.status_label.configure(text=f"Expressao salva: {name}")
+        self._set_status(f"Expressao salva: {name}", 2200)
 
     def _new_expression(self) -> None:
         name = simpledialog.askstring("Nova expressao", "Nome da expressao:")
@@ -849,35 +883,38 @@ class AvatarCamApp(tk.Tk):
         self.speaking_low_images = list(expression.get("talk_low") or [])
         self.speaking_mid_images = list(expression.get("talk_mid") or [])
         self.speaking_high_images = list(expression.get("talk_high") or [])
-        self.blink_images = list(expression.get("blink") or self.blink_images)
-        self.pet_images = list(expression.get("pet") or self.pet_images)
-        self.pet_speaking_images = list(expression.get("pet_talk") or self.pet_speaking_images)
-        self.pet_loud_images = list(expression.get("pet_loud") or self.pet_loud_images)
+        self.blink_images = self._profile_list(expression, "blink")
+        self.pet_images = self._profile_list(expression, "pet")
+        self.pet_speaking_images = self._profile_list(expression, "pet_talk")
+        self.pet_loud_images = self._profile_list(expression, "pet_loud")
         self.settings.active_expression = name
         self.expression_var.set(name)
         self._save_image_sets()
-        self.status_label.configure(text=f"Expressao: {name}")
+        self._set_status(f"Expressao: {name}", 2200)
 
     def _new_profile(self) -> None:
-        name = simpledialog.askstring("Novo perfil", "Nome do perfil:")
-        if not name:
+        raw_name = simpledialog.askstring("Novo perfil", "Nome do perfil:")
+        if not raw_name or not raw_name.strip():
             return
+        name = self._clean_profile_name(raw_name)
         self.profile_var.set(name)
         self._save_profile()
 
     def _load_profile(self, name: str) -> None:
+        name = self._clean_profile_name(name)
         profile = (self.settings.profiles or {}).get(name)
         if not profile:
             return
-        self.idle_images = list(profile.get("idle_images") or [])
-        self.speaking_images = list(profile.get("speaking_images") or [])
-        self.speaking_low_images = list(profile.get("speaking_low_images") or [])
-        self.speaking_mid_images = list(profile.get("speaking_mid_images") or [])
-        self.speaking_high_images = list(profile.get("speaking_high_images") or [])
-        self.blink_images = list(profile.get("blink_images") or self.blink_images)
-        self.pet_images = list(profile.get("pet_images") or self.pet_images)
-        self.pet_speaking_images = list(profile.get("pet_speaking_images") or self.pet_speaking_images)
-        self.pet_loud_images = list(profile.get("pet_loud_images") or self.pet_loud_images)
+        self.profile_var.set(name)
+        self.idle_images = self._profile_list(profile, "idle_images")
+        self.speaking_images = self._profile_list(profile, "speaking_images")
+        self.speaking_low_images = self._profile_list(profile, "speaking_low_images")
+        self.speaking_mid_images = self._profile_list(profile, "speaking_mid_images")
+        self.speaking_high_images = self._profile_list(profile, "speaking_high_images")
+        self.blink_images = self._profile_list(profile, "blink_images")
+        self.pet_images = self._profile_list(profile, "pet_images")
+        self.pet_speaking_images = self._profile_list(profile, "pet_speaking_images")
+        self.pet_loud_images = self._profile_list(profile, "pet_loud_images")
         self.sensitivity_var.set(float(profile.get("sensitivity", self.settings.sensitivity)))
         self.smoothing_var.set(float(profile.get("smoothing", self.settings.smoothing)))
         self.animation_fps_var.set(int(profile.get("animation_fps", self.settings.animation_fps)))
@@ -900,7 +937,7 @@ class AvatarCamApp(tk.Tk):
         self._save_settings()
         self._save_obs_settings()
         self._save_image_sets()
-        self.status_label.configure(text=f"Perfil carregado: {name}")
+        self._set_status(f"Perfil carregado: {name}", 2600)
 
     def _trigger_test(self) -> None:
         self.test_ticks = 90
@@ -915,7 +952,7 @@ class AvatarCamApp(tk.Tk):
                 return
         self.calibration_samples = []
         self.calibration_ticks = 180
-        self.status_label.configure(text="Calibrando ruido por 3 segundos...")
+        self._set_status("Calibrando ruido por 3 segundos...", 3200)
 
     def _toggle_theme(self) -> None:
         self.dark_var.set(not self.dark_var.get())
@@ -1075,7 +1112,7 @@ class AvatarCamApp(tk.Tk):
             self.obs_window.send_to_back()
         if save:
             self.settings.save()
-        self.status_label.configure(text="OBS rodando atras das janelas")
+        self._set_status("OBS rodando atras das janelas")
 
     def _show_obs_assistant(self) -> None:
         messagebox.showinfo(
@@ -1133,7 +1170,7 @@ class AvatarCamApp(tk.Tk):
                 calibrated = max(0.05, min(0.45, base * 2.7 + 0.035))
                 self.sensitivity_var.set(calibrated)
                 self._save_settings()
-                self.status_label.configure(text=f"Sensibilidade calibrada: {int(calibrated * 100)}%")
+                self._set_status(f"Sensibilidade calibrada: {int(calibrated * 100)}%", 2600)
 
         speaking = state.speaking or self.test_ticks > 0
         preset = self.settings.performance_preset
@@ -1152,7 +1189,9 @@ class AvatarCamApp(tk.Tk):
             self.last_volume_percent = percent
 
         status_mod = 45 if preset in ("performance", "ultra") else 15
-        if self.microphone.is_running and (speaking != self.last_speaking or self.ui_tick % status_mod == 0):
+        if self._status_is_held():
+            pass
+        elif self.microphone.is_running and (speaking != self.last_speaking or self.ui_tick % status_mod == 0):
             if self.calibration_ticks <= 0:
                 self.status_label.configure(text="Voz detectada" if speaking else f"Ouvindo microfone | FPS {self.render_fps}")
             self.last_speaking = speaking
@@ -1162,7 +1201,7 @@ class AvatarCamApp(tk.Tk):
             self.status_label.configure(text="Microfone desligado")
 
         self.render_frames += 1
-        now = int(self.tk.call("clock", "milliseconds"))
+        now = self._clock_ms()
         if self.last_fps_time == 0:
             self.last_fps_time = now
         elif now - self.last_fps_time >= 1000:
