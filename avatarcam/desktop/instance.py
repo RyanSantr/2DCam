@@ -38,6 +38,7 @@ class InstanceGuard:
                     elif b'\n' in socket.buffer:
                         if bytes(socket.buffer) == b'activate\n':
                             activate()
+                            socket.write(b'ok\n')
                         socket.disconnectFromServer()
 
                 def cleanup(socket=client):
@@ -59,11 +60,18 @@ class InstanceGuard:
             socket.connectToServer(self.name)
             if socket.waitForConnected(min(150, timeout_ms - elapsed.elapsed())):
                 socket.write(b'activate\n')
-                QCoreApplication.processEvents()
-                socket.flush()
-                sent = socket.bytesToWrite() == 0 or socket.waitForBytesWritten(1000)
-                socket.disconnectFromServer()
-                return sent
+                reply=bytearray()
+                while elapsed.elapsed()<timeout_ms:
+                    QCoreApplication.processEvents()
+                    reply.extend(bytes(socket.readAll()))
+                    if bytes(reply)==b'ok\n':
+                        socket.disconnectFromServer()
+                        return True
+                    if socket.state()==QLocalSocket.LocalSocketState.UnconnectedState:
+                        break
+                    socket.waitForReadyRead(min(20,max(1,timeout_ms-elapsed.elapsed())))
+                socket.abort()
+                return False
             # Aguarda eventos locais, sem criar uma segunda janela na corrida de abertura.
             from PySide6.QtCore import QThread
             QThread.msleep(50)

@@ -1,7 +1,7 @@
 from pathlib import Path
 import json
 import time
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, QEvent
 from PySide6.QtGui import QIcon, QImage, QPixmap, QShortcut, QKeySequence
 from PySide6.QtWidgets import (QMenu, QMainWindow, QWidget, QFrame, QLabel, QPushButton,
     QVBoxLayout, QHBoxLayout, QGridLayout, QStackedWidget, QButtonGroup,
@@ -15,6 +15,8 @@ from avatarcam.desktop.performance import PRESETS, ProcessUsage
 from avatarcam.audio.microphone import MicrophoneInput
 from avatarcam.core.persistence import atomic_write_text
 from avatarcam.core.settings import APP_DIR
+from avatarcam.desktop.output import OUTPUT_SIZES, output_size
+from avatarcam.desktop.shortcuts import LiveShortcuts, SHORTCUTS
 
 
 def label(text, name=None, wrap=False):
@@ -46,8 +48,14 @@ class CaptureWindow(QMainWindow):
         for _ in range(2):
             host=QWidget(); layout=QVBoxLayout(host); layout.setContentsMargins(0,0,0,0)
             self.stack.addWidget(host); self.hosts.append(host)
-        sizes={'360p':(640,360),'720p':(1280,720),'1080p':(1920,1080)}
-        self.resize(*sizes.get(controller.preferences.get('output_size'),(960,540)))
+        self.resize(*output_size(controller.preferences.get('output_size')))
+        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, controller.preferences.get('output_on_top',False))
+        self.shortcuts=[]
+        for chord,action,_ in SHORTCUTS:
+            shortcut=QShortcut(QKeySequence(chord),self); shortcut.setAutoRepeat(False)
+            shortcut.setEnabled(not controller.preferences['global_shortcuts'])
+            shortcut.activated.connect(lambda value=action:parent.handle_live_shortcut(value))
+            self.shortcuts.append(shortcut)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self.menu)
 
@@ -66,6 +74,8 @@ class StudioWindow(QMainWindow):
     def __init__(self):
         super().__init__(); self.controller=StudioController(); self.capture_window=None
         self.avatar3d=None; self.current_destination=None; self.quitting=False
+        self.last_camera_frame=None
+        self.live_shortcuts=LiveShortcuts(self); self.live_shortcuts.triggered.connect(self.handle_live_shortcut,Qt.ConnectionType.QueuedConnection)
         self.setWindowTitle('2DCam Studio')
         self.setWindowIcon(QIcon(str(ASSETS/'studio.ico')))
         self.resize(1180,780); self.setMinimumSize(920,620);
@@ -101,14 +111,17 @@ class StudioWindow(QMainWindow):
         center.addWidget(self.preview,1)
         tools=QHBoxLayout(); tools.addWidget(button('Centralizar',self.reset_camera))
         tools.addWidget(button('Salvar posição',self.save_camera)); tools.addWidget(button('Testar fala',lambda:self.controller.command('test')))
-        tools.addStretch(); self.output_button=button('Abrir saída para OBS',self.open_capture); tools.addWidget(self.output_button)
+        tools.addStretch(); self.output_button=button('Saída OBS',self.open_capture)
+        self.output_button.setToolTip('Abrir a janela do avatar para capturar no OBS')
+        tools.addWidget(self.output_button)
         center.addLayout(tools); center.addWidget(label('Arraste para enquadrar. Use a roda para aproximar.','muted'))
         body.addWidget(middle,1)
         inspector=QFrame(); inspector.setObjectName('inspector'); inspector.setFixedWidth(294)
         right=QVBoxLayout(inspector); right.setContentsMargins(8,0,8,0)
         self.panels=QStackedWidget(); right.addWidget(self.panels); body.addWidget(inspector)
         self.build_studio_panel(); self.build_library_panel(); self.build_tracking_panel(); self.build_settings_panel()
-        self.controller.changed.connect(self.sync); self.controller.notice.connect(self.show_notice)
+        self.sync_timer=QTimer(self); self.sync_timer.setSingleShot(True); self.sync_timer.setInterval(100); self.sync_timer.timeout.connect(self.sync)
+        self.controller.changed.connect(self.schedule_sync); self.controller.notice.connect(self.show_notice)
         self.build_menu(); self.statusBar().showMessage('Pronto')
         self.usage=ProcessUsage(); self.resource_label=label('','muted'); self.statusBar().addPermanentWidget(self.resource_label)
         self.stats_timer=QTimer(self); self.stats_timer.timeout.connect(self.update_resources); self.stats_timer.start(2000)
@@ -118,7 +131,18 @@ class StudioWindow(QMainWindow):
         QShortcut(QKeySequence('Ctrl+T'),self).activated.connect(self.controller.toggle_tracking)
         QShortcut(QKeySequence('Ctrl+P'),self).activated.connect(self.controller.toggle_pause)
         QShortcut(QKeySequence('Ctrl+Shift+O'),self).activated.connect(self.open_capture)
+        self.local_live_shortcuts=[]
+        for chord,action,_ in SHORTCUTS:
+            shortcut=QShortcut(QKeySequence(chord),self)
+            shortcut.setAutoRepeat(False)
+            shortcut.activated.connect(lambda value=action:self.handle_live_shortcut(value))
+            self.local_live_shortcuts.append(shortcut)
+        self.configure_live_shortcuts(self.controller.preferences['global_shortcuts'])
         self.sync()
+
+    def schedule_sync(self):
+        self.route_avatar()
+        if not self.sync_timer.isActive(): self.sync_timer.start()
 
     def update_resources(self):
         values=self.usage.sample(); self.controller.resource_usage=values
@@ -127,6 +151,7 @@ class StudioWindow(QMainWindow):
             self.resource_label.setText(f"{values['private_mb']:.0f} MB privados · {fps:.0f} FPS")
         active=(self.isVisible() and not self.isMinimized()) or bool(self.capture_window and self.capture_window.isVisible() and not self.capture_window.isMinimized())
         self.controller.set_render_active(active)
+        self.toggle_camera_preview()
 
     def route_avatar(self):
         c=self.controller; capture=self.capture_window
@@ -145,7 +170,7 @@ class StudioWindow(QMainWindow):
         self.avatar2d.capture=bool(capture)
         if capture: capture.stack.setCurrentIndex(1 if c.mode=='3D' else 0)
         self.preview.setCurrentIndex(2 if capture else 1 if c.mode=='3D' else 0)
-        self.output_button.setText('Mostrar saída' if capture else 'Abrir saída para OBS')
+        self.output_button.setText('Mostrar saída' if capture else 'Saída OBS')
 
     def reload_renderer(self):
         if self.avatar3d:
@@ -209,6 +234,7 @@ class StudioWindow(QMainWindow):
         assets.addWidget(button('Importar pasta 2D',self.choose_folder))
         packs=group('Biblioteca portátil',layout); packs.addWidget(button('Importar .avatarpack',self.choose_pack))
         packs.addWidget(button('Exportar avatar atual',self.export_pack))
+        packs.addWidget(label('O pacote leva poses, expressões 2D e enquadramento.','muted',True))
         profiles=group('Perfis',layout); self.profile_combo=QComboBox(); profiles.addWidget(self.profile_combo)
         self.refresh_profiles(); self.profile_combo.activated.connect(self.load_profile)
         profiles.addWidget(button('Salvar perfil atual',self.save_profile))
@@ -259,7 +285,7 @@ class StudioWindow(QMainWindow):
         output=group('Saída do avatar',layout); output.addWidget(button('Abrir janela separada',self.open_capture,True))
         output.addWidget(button('Salvar imagem da prévia',self.save_image))
         self.output_size=QComboBox()
-        for text,key in (('960 × 540','540p'),('640 × 360','360p'),('1280 × 720','720p'),('1920 × 1080','1080p')): self.output_size.addItem(text,key)
+        for key,(width,height) in OUTPUT_SIZES.items(): self.output_size.addItem(f'{width} × {height}'+(' · vertical' if height>width else ''),key)
         self.output_size.setCurrentIndex(max(0,self.output_size.findData(self.controller.preferences.get('output_size','540p'))))
         self.output_size.currentIndexChanged.connect(self.change_output_size); output.addWidget(self.output_size)
         self.output_background=QComboBox()
@@ -268,7 +294,13 @@ class StudioWindow(QMainWindow):
         self.output_background.currentIndexChanged.connect(lambda i:self.set_preference('output_background',self.output_background.itemData(i))); output.addWidget(self.output_background)
         self.hide_controls=QCheckBox('Ocultar controles ao abrir saída'); self.hide_controls.setChecked(bool(self.controller.preferences.get('hide_controls',False)))
         self.hide_controls.toggled.connect(lambda v:self.set_preference('hide_controls',v)); output.addWidget(self.hide_controls)
+        self.output_on_top=QCheckBox('Saída sempre no topo'); self.output_on_top.setChecked(self.controller.preferences['output_on_top'])
+        self.output_on_top.toggled.connect(self.change_output_top); output.addWidget(self.output_on_top)
         output.addWidget(button('Como capturar no OBS',self.obs_help))
+        shortcuts=group('Atalhos de live',layout)
+        self.global_shortcuts=QCheckBox('Usar também fora do app'); self.global_shortcuts.setChecked(self.controller.preferences['global_shortcuts'])
+        self.global_shortcuts.toggled.connect(self.configure_live_shortcuts); shortcuts.addWidget(self.global_shortcuts)
+        shortcuts.addWidget(label('F8: controles · F9: pausa · F10: microfone\nCtrl+Alt+1…6: expressões','muted',True))
         layout.addWidget(button('Recarregar prévia 3D',self.reload_renderer)); layout.addWidget(button('Exportar diagnóstico',self.export_diagnostics)); layout.addStretch()
 
     def build_menu(self):
@@ -282,15 +314,46 @@ class StudioWindow(QMainWindow):
         self.toggle_camera_preview()
 
     def toggle_camera_preview(self,*args):
-        enabled=self.panels.currentIndex()==2 and self.show_camera.isChecked() and self.isVisible()
+        enabled=self.panels.currentIndex()==2 and self.show_camera.isChecked() and self.isVisible() and not self.isMinimized()
         self.controller.tracker.preview_enabled=enabled
         if not enabled:
             with self.controller.tracker.lock: self.controller.tracker.frame=None
             self.controller.camera_frame=None
+            self.last_camera_frame=None
 
     def change_output_size(self,index):
         key=self.output_size.itemData(index); self.set_preference('output_size',key)
-        if self.capture_window: self.capture_window.resize(*{'360p':(640,360),'540p':(960,540),'720p':(1280,720),'1080p':(1920,1080)}[key])
+        if self.capture_window: self.capture_window.resize(*output_size(key))
+
+    def change_output_top(self,enabled):
+        self.set_preference('output_on_top',enabled)
+        if self.capture_window:
+            geometry=self.capture_window.geometry()
+            self.capture_window.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint,enabled)
+            self.capture_window.setGeometry(geometry); self.capture_window.show()
+
+    def configure_live_shortcuts(self,enabled):
+        success=self.live_shortcuts.set_enabled(enabled)
+        if not success:
+            self.global_shortcuts.blockSignals(True); self.global_shortcuts.setChecked(False); self.global_shortcuts.blockSignals(False)
+            self.show_notice('Atalhos globais indisponíveis. Os atalhos dentro do app continuam ativos.')
+        enabled=bool(enabled and success)
+        for shortcut in self.local_live_shortcuts+(self.capture_window.shortcuts if self.capture_window else []): shortcut.setEnabled(not enabled)
+        self.set_preference('global_shortcuts',enabled)
+
+    def handle_live_shortcut(self,action):
+        if self.quitting: return
+        if action=='controls':
+            if self.isVisible() and not self.isMinimized():
+                self.open_capture(); self.hide(); self.toggle_camera_preview()
+            else: self.restore_controls()
+        elif action=='pause': self.controller.toggle_pause()
+        elif action=='microphone': self.controller.toggle_microphone()
+        elif action.startswith('expression:'):
+            key=action.split(':',1)[1]
+            button=self.expression_buttons.get(key)
+            if button is not None and not button.isEnabled(): self.show_notice('Esta expressão não está disponível neste avatar.'); return
+            self.controller.command('expression',key)
 
     def obs_help(self):
         QMessageBox.information(self,'Capturar no OBS','1. Abra a saída do avatar.\n2. No OBS, adicione Captura de janela.\n3. Selecione 2DCam - Avatar.\n4. Use o método Windows 10 (1903 ou superior) se Automático falhar.\n5. Desative Capturar cursor e ative Área do cliente.\n6. Adicione o filtro Chroma Key para remover o fundo verde/azul.\n\nMantenha a janela de saída aberta e sem minimizar. Para poupar recursos, use o modo Econômico e oculte os controles.\n\nA captura depende do Windows, da GPU e do OBS. Guia oficial: obsproject.com/kb/window-capture-sources')
@@ -343,13 +406,22 @@ class StudioWindow(QMainWindow):
         face=c.face
         self.face_metrics.setText(f"Boca {face['jaw']:.0%}  ·  Olhos {max(face['blinkLeft'],face['blinkRight']):.0%}\nCabeça: {face['yaw']*57.3:.0f}° / {face['pitch']*57.3:.0f}°")
         if self.panels.currentIndex()==2 and self.show_camera.isChecked() and c.camera_frame is not None:
-            rgb=c.camera_frame; h,w=rgb.shape[:2]
-            image=QImage(rgb.data,w,h,w*3,QImage.Format.Format_RGB888).copy().mirrored(True,False)
-            self.camera_image.setPixmap(QPixmap.fromImage(image).scaled(240,160,Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation))
+            if self.last_camera_frame is not c.camera_frame:
+                rgb=c.camera_frame; h,w=rgb.shape[:2]
+                image=QImage(rgb.data,w,h,w*3,QImage.Format.Format_RGB888).copy().mirrored(True,False)
+                self.camera_image.setPixmap(QPixmap.fromImage(image).scaled(240,160,Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation))
+                self.last_camera_frame=c.camera_frame
         else:
+            self.last_camera_frame=None
             self.camera_image.clear(); self.camera_image.setText('Prévia oculta' if c.tracker.running else 'Câmera desligada')
-        if not self.sensitivity_slider.isSliderDown():
-            self.sensitivity_slider.blockSignals(True); self.sensitivity_slider.setValue(int(c.settings.sensitivity*100)); self.sensitivity_slider.blockSignals(False)
+        for slider,value in ((self.sensitivity_slider,c.settings.sensitivity),(self.scale_slider,c.settings.avatar_scale),
+                             (self.face_smoothing_slider,c.preferences['face_smoothing']),(self.face_strength_slider,c.preferences['face_strength'])):
+            number=round(value*100)
+            if not slider.isSliderDown() and slider.value()!=number:
+                slider.blockSignals(True); slider.setValue(number); slider.blockSignals(False)
+        for widget,value in ((self.rotate,c.settings.auto_rotate3d),(self.pet,c.settings.pet_enabled)):
+            if widget.isChecked()!=value:
+                widget.blockSignals(True); widget.setChecked(value); widget.blockSignals(False)
 
     def choose_2d(self,role='idle'):
         paths,_=QFileDialog.getOpenFileNames(self,'Importar imagens 2D','','Imagens (*.png *.gif)')
@@ -436,6 +508,8 @@ class StudioWindow(QMainWindow):
         for combo,key in ((self.performance_combo,'performance'),(self.output_size,'output_size'),(self.output_background,'output_background')):
             combo.blockSignals(True); combo.setCurrentIndex(max(0,combo.findData(c.preferences.get(key)))); combo.blockSignals(False)
         self.hide_controls.blockSignals(True); self.hide_controls.setChecked(c.preferences.get('hide_controls',False)); self.hide_controls.blockSignals(False)
+        self.output_on_top.blockSignals(True); self.output_on_top.setChecked(c.preferences['output_on_top']); self.output_on_top.blockSignals(False)
+        self.change_output_top(c.preferences['output_on_top'])
         self.filter_combo.blockSignals(True); self.filter_combo.setCurrentIndex(1 if c.settings.speech_mode=='vad' else 0); self.filter_combo.blockSignals(False)
         for widget,value in ((self.rotate,c.settings.auto_rotate3d),(self.pet,c.settings.pet_enabled)):
             widget.blockSignals(True); widget.setChecked(value); widget.blockSignals(False)
@@ -443,7 +517,7 @@ class StudioWindow(QMainWindow):
             slider.blockSignals(True); slider.setValue(round(value*100)); slider.blockSignals(False)
         if self.capture_window:
             key=c.preferences.get('output_size','540p')
-            self.capture_window.resize(*{'360p':(640,360),'540p':(960,540),'720p':(1280,720),'1080p':(1920,1080)}[key])
+            self.capture_window.resize(*output_size(key))
     def reset_camera(self):
         if self.controller.mode=='3D': self.controller.command('reset_camera')
         else:
@@ -468,7 +542,7 @@ class StudioWindow(QMainWindow):
     def export_diagnostics(self):
         path,_=QFileDialog.getSaveFileName(self,'Diagnóstico','2DCam-diagnostico.json','JSON (*.json)')
         if path:
-            data={'version':'3.2','mode':self.controller.mode,'embedded_renderer':self.controller.renderer_report,
+            data={'version':'3.3','mode':self.controller.mode,'embedded_renderer':self.controller.renderer_report,
                   'camera_running':self.controller.tracker.running,'face_detected':self.controller.face['detected'],
                   'vad_available':self.controller.microphone.vad_available,'renderer_errors':self.avatar3d.page().console_errors if self.avatar3d else [],
                   'performance':self.controller.preferences.get('performance'), 'process_usage':getattr(self.controller,'resource_usage',{})}
@@ -479,8 +553,13 @@ class StudioWindow(QMainWindow):
         urls=event.mimeData().urls()
         if urls and urls[0].isLocalFile(): self.import_path(urls[0].toLocalFile())
     def closeEvent(self,event):
-        self.quitting=True; self.stats_timer.stop()
+        self.quitting=True; self.stats_timer.stop(); self.sync_timer.stop(); self.live_shortcuts.close()
         if self.capture_window: self.capture_window.close()
         self.controller.close()
         if self.avatar3d: self.avatar3d.release()
         event.accept()
+
+    def changeEvent(self,event):
+        super().changeEvent(event)
+        if event.type()==QEvent.Type.WindowStateChange and hasattr(self,'show_camera'):
+            self.toggle_camera_preview()

@@ -17,6 +17,8 @@ from avatarcam.audio.microphone import MicrophoneInput
 from avatarcam.tracking.face import FaceTracker, FaceSmoother, empty_face
 
 ASSETS = Path(__file__).resolve().parents[1] / 'assets'
+PACK_SETTINGS = ('avatar_scale','avatar_offset_x','avatar_offset_y','avatar_rotation','animation_fps','camera3d',
+                 'auto_rotate3d','pet_enabled','pet_size','pet_offset_x','pet_offset_y')
 
 
 class StudioController(QObject):
@@ -184,11 +186,19 @@ class StudioController(QObject):
         self.noise_samples = []; self.calibration_until = time.monotonic()+3
         self.notice.emit('Fique em silêncio por 3 segundos…')
 
-    def submit(self, worker, success):
+    def submit(self, worker, success, message='Importando avatar…'):
         if self.jobs:
-            self.notice.emit('Aguarde a importação atual.'); return
+            self.notice.emit('Aguarde a operação atual.'); return False
         self.jobs.append((self.executor.submit(worker), success))
-        self.notice.emit('Importando avatar…')
+        self.notice.emit(message)
+        return True
+
+    def avatar_name(self):
+        if self.mode=='2D': return self.preferences.get('avatar2d_name','Avatar 2D')
+        name=Path(self.model_path).stem
+        suffix=name.rsplit('_',1)[-1]
+        if len(suffix)==12 and all(ch in '0123456789abcdef' for ch in suffix): name=name.rsplit('_',1)[0]
+        return 'Avatar de exemplo' if name=='AvatarHumanoide' else name
 
     def remember_avatar(self):
         entry=dict(mode=self.mode,name=Path(self.model_path).stem if self.mode=='3D' else self.preferences.get('avatar2d_name','Avatar 2D'))
@@ -221,6 +231,7 @@ class StudioController(QObject):
             self.remember_avatar(); self.changed.emit(); self.defer_save()
 
     def use_model(self, path):
+        self.manual_expression=None
         self.model_path = path; self.settings.camera3d = None; self.camera_revision += 1
         self.switch_mode('3D'); self.remember_avatar(); self.notice.emit('Avatar 3D pronto na janela do app.')
 
@@ -228,6 +239,7 @@ class StudioController(QObject):
         self.submit(lambda: import_model(path), self.use_model)
 
     def use_sets(self, sets):
+        self.manual_expression=None
         for key in self.sets: self.sets[key] = sets.get(key, [])
         self.preferences['expressions2d'] = {}
         self.preferences['avatar2d_name'] = 'Avatar 2D'
@@ -262,13 +274,27 @@ class StudioController(QObject):
         def success(result):
             if result['model_path']: self.use_model(result['model_path'])
             else: self.use_sets(result['sets'])
+            for key,value in result['settings'].items():
+                if key in PACK_SETTINGS: setattr(self.settings,key,value)
+            if self.mode=='2D':
+                self.preferences['expressions2d']=result.get('expressions',{})
+                self.preferences['avatar2d_name']=result['name']
+            elif result['settings'].get('expression3d') not in (None,'neutral'):
+                self.manual_expression=result['settings']['expression3d']
+            self.camera_revision+=1; self.remember_avatar(); self.changed.emit()
+            self.notice.emit('Pacote importado com poses, expressões e enquadramento.')
         self.submit(lambda: import_avatar_pack(path), success)
 
     def export_pack(self, path):
         model = self.model_path if self.mode == '3D' else ''
         sets = {} if self.mode == '3D' else dict(self.sets)
-        self.submit(lambda: export_avatar_pack(path, 'Meu_avatar', sets, {'expression3d':self.expression}, model),
-                    lambda _: self.notice.emit('Pacote salvo com sucesso.'))
+        from copy import deepcopy
+        config={key:deepcopy(getattr(self.settings,key)) for key in PACK_SETTINGS}
+        config['expression3d']=self.expression
+        mappings=deepcopy(self.preferences.get('expressions2d',{})) if self.mode=='2D' else {}
+        name=self.avatar_name()
+        self.submit(lambda: export_avatar_pack(path, name, sets, config, model, mappings),
+                    lambda _: self.notice.emit('Pacote salvo com sucesso.'), 'Salvando pacote de avatar…')
 
     def tick(self):
         now = time.monotonic(); dt = min(.2, now-self.last_tick); self.last_tick = now
@@ -295,7 +321,7 @@ class StudioController(QObject):
             if future.done():
                 self.jobs.remove((future,success))
                 try: success(future.result()); self.defer_save()
-                except Exception as exc: self.notice.emit(f'Importação não concluída: {exc}')
+                except Exception as exc: self.notice.emit(f'Operação não concluída: {exc}')
         self.changed.emit()
 
     def close(self):

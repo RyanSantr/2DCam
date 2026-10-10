@@ -10,7 +10,7 @@ SETTING_FIELDS = ('avatar_scale', 'avatar_offset_x', 'avatar_offset_y', 'avatar_
                   'sensitivity', 'smoothing', 'noise_floor', 'speech_mode', 'mouth_hold_ticks', 'animation_fps',
                   'auto_rotate3d', 'pet_enabled', 'pet_size', 'pet_offset_x', 'pet_offset_y')
 PREFERENCE_FIELDS = ('mode', 'avatar2d_name', 'expressions2d', 'performance', 'face_smoothing',
-                     'face_strength', 'output_size', 'output_background', 'hide_controls')
+                     'face_strength', 'output_size', 'output_background', 'hide_controls', 'output_on_top')
 
 
 def save_profile(controller, name):

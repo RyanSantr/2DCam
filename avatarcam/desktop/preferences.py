@@ -1,6 +1,7 @@
 """Valida dados da interface antes de usa-los em widgets e bibliotecas."""
 from copy import deepcopy
 import math
+from avatarcam.desktop.output import OUTPUT_SIZES
 
 ROLES = ('idle', 'talk', 'blink', 'pet', 'pet_talk')
 EXPRESSIONS = ('happy', 'angry', 'sad', 'relaxed', 'surprised', 'neutral')
@@ -19,13 +20,15 @@ def expressions(value):
 def sanitize_preferences(value):
     result = deepcopy(value) if isinstance(value, dict) else {}
     choices = {'mode': ('3D', '2D'), 'performance': ('balanced', 'economy', 'quality'),
-               'output_background': ('green', 'blue', 'dark'), 'output_size': ('540p', '360p', '720p', '1080p')}
+               'output_background': ('green', 'blue', 'dark'), 'output_size': tuple(OUTPUT_SIZES)}
     for key, allowed in choices.items():
         if not isinstance(result.get(key), str) or result[key] not in allowed:
             result[key] = allowed[0]
     if not isinstance(result.get('avatar2d_name'), str):
         result['avatar2d_name'] = 'Avatar 2D'
     result['hide_controls'] = result.get('hide_controls') is True
+    result['output_on_top'] = result.get('output_on_top') is True
+    result['global_shortcuts'] = result.get('global_shortcuts') is True
     result['expressions2d'] = expressions(result.get('expressions2d'))
     modes = result.get('profile_modes', {})
     result['profile_modes'] = {key: mode for key, mode in modes.items() if isinstance(key, str) and mode in ('2D', '3D')} if isinstance(modes, dict) else {}

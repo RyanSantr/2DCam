@@ -18,11 +18,11 @@ class HotkeyManager:
     def available(self) -> bool:
         return self._keyboard is not None
 
-    def register(self, hotkey: str, callback) -> bool:
+    def register(self, hotkey: str, callback, on_release: bool = False) -> bool:
         if not self._keyboard or not hotkey.strip():
             return False
         try:
-            handle = self._keyboard.add_hotkey(hotkey, callback)
+            handle = self._keyboard.add_hotkey(hotkey, callback, trigger_on_release=on_release)
             self._handles.append(handle)
             return True
         except Exception as exc:

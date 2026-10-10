@@ -12,6 +12,7 @@ AVATAR_DIR = APP_DIR / 'avatars'
 IMAGE_EXTS = {'.png', '.gif'}
 MAX_IMAGE_SIDE = 1600
 MAX_PACK_BYTES = 256 * 1024 * 1024
+EXPRESSION_KEYS = ('happy', 'angry', 'sad', 'relaxed', 'surprised', 'neutral')
 FOLDERS = {
     'idle': ('idle',), 'talk': ('talk', 'fala'),
     'talk_low': ('talk_low', 'fala_baixa'), 'talk_mid': ('talk_mid', 'fala_media'),
@@ -56,7 +57,9 @@ def _commit(stage: Path, name: str, settings: dict | None = None) -> dict:
         number += 1
     stage.rename(target)
     models = list((target / 'model').glob('*')) if (target / 'model').is_dir() else []
-    return {'name': target.name, 'settings': settings or {}, 'model_path': str(models[0]) if models else '', 'sets': {key: images_from_folder(target / key) for key in FOLDERS}}
+    return {'name': target.name, 'settings': settings or {}, 'model_path': str(models[0]) if models else '',
+            'sets': {key: images_from_folder(target / key) for key in FOLDERS},
+            'expressions': {key: images_from_folder(target / 'expressions' / key) for key in EXPRESSION_KEYS if images_from_folder(target / 'expressions' / key)}}
 
 
 def import_avatar_folder(source: str, name: str) -> dict:
@@ -87,8 +90,11 @@ def import_avatar_folder(source: str, name: str) -> dict:
             shutil.rmtree(stage)
 
 
-def export_avatar_pack(destination: str, name: str, image_sets: dict, settings: dict, model_path: str = '') -> None:
+def export_avatar_pack(destination: str, name: str, image_sets: dict, settings: dict, model_path: str = '', expression_sets: dict | None = None) -> None:
     Settings.from_dict(settings)
+    expression_sets = {} if expression_sets is None else expression_sets
+    if not isinstance(expression_sets, dict) or any(key not in EXPRESSION_KEYS or not isinstance(paths, list) or len(paths)>512 or not all(isinstance(path,str) for path in paths) for key,paths in expression_sets.items()):
+        raise ValueError('Vínculos de expressão inválidos.')
     dest = Path(destination)
     dest.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary = tempfile.mkstemp(dir=dest.parent, suffix='.avatarpack.tmp')
@@ -107,9 +113,9 @@ def export_avatar_pack(destination: str, name: str, image_sets: dict, settings: 
                 total_bytes += model.stat().st_size
                 total_files += 1
                 archive.write(model, model_entry)
-            for key, paths in image_sets.items():
-                if key not in FOLDERS:
-                    continue
+            groups = {key:paths for key,paths in image_sets.items() if key in FOLDERS}
+            groups.update({'expressions/'+key:paths for key,paths in expression_sets.items()})
+            for key, paths in groups.items():
                 sets[key] = []
                 for index, path in enumerate(paths):
                     src = Path(path)
@@ -122,7 +128,7 @@ def export_avatar_pack(destination: str, name: str, image_sets: dict, settings: 
                     filename = f'{index:04d}_{src.name}'
                     archive.write(src, f'{key}/{filename}')
                     sets[key].append(filename)
-            archive.writestr('manifest.json', json.dumps({'version': 2, 'name': name, 'sets': sets, 'settings': settings, 'model': model_entry}, ensure_ascii=False, allow_nan=False))
+            archive.writestr('manifest.json', json.dumps({'version': 3, 'name': name, 'sets': sets, 'settings': settings, 'model': model_entry}, ensure_ascii=False, allow_nan=False))
         os.replace(temporary, dest)
     finally:
         Path(temporary).unlink(missing_ok=True)
@@ -139,16 +145,16 @@ def import_avatar_pack(pack_path: str) -> dict:
         seen = set()
         for item in infos:
             parts = PurePosixPath(item.filename).parts
-            if '\\' in item.filename or not parts or item.filename.startswith('/') or any(p in ('.', '..') or ':' in p for p in parts):
+            if '\\' in item.filename or not parts or item.filename.startswith('/') or item.filename.rstrip('/') != '/'.join(parts) or any(p in ('.', '..') or ':' in p for p in parts):
                 raise ValueError('Avatarpack contem caminho invalido.')
             folded = item.filename.casefold()
             if folded in seen:
                 raise ValueError('Avatarpack contem nomes duplicados.')
             seen.add(folded)
             if item.is_dir():
-                if len(parts) != 1 or parts[0] not in (*FOLDERS, 'model'):
+                if not ((len(parts)==1 and parts[0] in (*FOLDERS, 'model', 'expressions')) or (len(parts)==2 and parts[0]=='expressions' and parts[1] in EXPRESSION_KEYS)):
                     raise ValueError('Pasta inesperada no avatarpack.')
-            elif item.filename != 'manifest.json' and (len(parts) != 2 or not ((parts[0] in FOLDERS and Path(parts[1]).suffix.lower() in IMAGE_EXTS) or (parts[0] == 'model' and Path(parts[1]).suffix.lower() in ('.glb', '.vrm')))):
+            elif item.filename != 'manifest.json' and not ((len(parts)==2 and ((parts[0] in FOLDERS and Path(parts[1]).suffix.lower() in IMAGE_EXTS) or (parts[0]=='model' and Path(parts[1]).suffix.lower() in ('.glb','.vrm')))) or (len(parts)==3 and parts[0]=='expressions' and parts[1] in EXPRESSION_KEYS and Path(parts[2]).suffix.lower() in IMAGE_EXTS)):
                 raise ValueError('Arquivo inesperado no avatarpack.')
         manifest = json.loads(archive.read('manifest.json').decode('utf-8'))
         if not isinstance(manifest, dict) or not isinstance(manifest.get('name', 'Avatar'), str):
@@ -166,17 +172,22 @@ def import_avatar_pack(pack_path: str) -> dict:
                 (stage / key).mkdir()
             if model_entries:
                 (stage / 'model').mkdir()
+            for key in EXPRESSION_KEYS:
+                if any(item.filename.startswith('expressions/'+key+'/') and not item.is_dir() for item in infos):
+                    (stage / 'expressions' / key).mkdir(parents=True)
             for item in infos:
                 if item.is_dir() or item.filename == 'manifest.json':
                     continue
                 if item.filename in model_entries:
                     from avatarcam.core.model3d import inspect_model
                     model = stage / item.filename
-                    model.write_bytes(archive.read(item))
+                    with archive.open(item) as source, model.open('wb') as destination:
+                        shutil.copyfileobj(source,destination,65536)
                     inspect_model(model)
                     continue
                 raw = stage / (PurePosixPath(item.filename).name + '.raw')
-                raw.write_bytes(archive.read(item))
+                with archive.open(item) as source, raw.open('wb') as destination:
+                    shutil.copyfileobj(source,destination,65536)
                 try:
                     copy_optimized_image(raw, stage / item.filename)
                 finally:

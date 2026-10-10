@@ -1,4 +1,4 @@
-# 2DCam Studio 3.2
+# 2DCam Studio 3.3
 
 [![Testes Windows](https://github.com/RyanSantr/2DCam/actions/workflows/tests.yml/badge.svg)](https://github.com/RyanSantr/2DCam/actions/workflows/tests.yml)
 
@@ -37,13 +37,15 @@ Para começar: importe o personagem, ative o microfone ou **Ligar rastreamento**
 
 São limites e metas, não uma promessa de FPS. GPU, iluminação, câmera e complexidade do modelo afetam o resultado. O orçamento das imagens não limita toda a memória do aplicativo; modelos 3D, detector facial e componentes nativos usam memória adicional.
 
+Os controles recebem atualizações agrupadas em até 10 vezes por segundo; o avatar mantém sua própria taxa. A miniatura da câmera só é refeita quando chega um frame novo e é liberada ao ocultar ou minimizar os controles.
+
 Com o OBS, comece por **Econômico**, saída **960 × 540** ou **640 × 360**, câmera oculta e **Ocultar controles ao abrir saída**. A memória privada residente dos processos aparece no rodapé; não inclui memória compartilhada nem VRAM.
 
 O app carrega apenas um avatar 3D. A saída reutiliza a mesma superfície do editor; por isso a prévia do editor fica substituída por uma mensagem durante a captura. Voltar ao editor devolve o mesmo renderizador. Trocar para 2D destrói a página 3D e libera seu conteúdo. Modelos pesados devem ser reduzidos pelo criador; o app não consegue garantir um teto de RAM para todo VRM/GLB.
 
 ## Saída para OBS
 
-1. Clique **Abrir saída para OBS**.
+1. Clique **Saída OBS**.
 2. No OBS, crie **Captura de janela** e selecione **2DCam - Avatar**.
 3. Use **Automático**; se a captura falhar, escolha **Windows 10 (1903 ou superior)**.
 4. Desative **Capturar cursor** e ative **Área do cliente**.
@@ -51,7 +53,7 @@ O app carrega apenas um avatar 3D. A saída reutiliza a mesma superfície do edi
 
 Mantenha a saída aberta e sem minimizar. Os controles do editor podem ficar ocultos. Clique com o botão direito na área vazia da saída para mostrar os controles, pausar ou fechar. Fechar a saída devolve o avatar ao editor. Não é necessário criar uma Fonte de navegador.
 
-Tamanhos: 640 × 360, 960 × 540, 1280 × 720 e 1920 × 1080. Fundos: verde, azul ou cinza. **Recarregar prévia 3D** recupera uma renderização interrompida. O app não instala driver de câmera virtual nem oferece alpha transparente diretamente ao OBS.
+Tamanhos horizontais: 640 × 360, 960 × 540, 1280 × 720 e 1920 × 1080. Verticais: 720 × 1280 e 1080 × 1920. A opção **Saída sempre no topo** mantém o avatar à vista. Fundos: verde, azul ou cinza. **Recarregar prévia 3D** recupera uma renderização interrompida. O app não instala driver de câmera virtual nem oferece alpha transparente diretamente ao OBS.
 
 A captura foi exercitada no OBS 32.2.2 / Windows 11 com Windows Graphics Capture. Outras versões e dispositivos exigem verificação. Em computadores com duas GPUs, o OBS e o app podem exigir ajustes nas preferências gráficas do Windows.
 
@@ -69,7 +71,7 @@ VRM/GLB devem ser autocontidos, com recursos incorporados, sem Draco/Meshopt/KTX
 
 Arquivos importados são copiados para a biblioteca local. Recentes guardam até 12 avatares. Perfis guardam poses, expressões 2D, pet, modelo, enquadramento, ajustes de voz/movimento, desempenho e saída. Carregar um perfil substitui as poses vazias corretamente; um arquivo obrigatório ausente mantém o avatar atual. É possível excluir um perfil sem apagar as imagens. Perfis antigos continuam disponíveis.
 
-Pacotes .avatarpack permitem transportar o personagem; vínculos personalizados de expressão permanecem nas configurações locais. Perfis guardam caminhos locais e não são pacotes portáteis. Dados locais ficam em `%USERPROFILE%\.avatarcam_2d`.
+Pacotes .avatarpack levam imagens, poses, expressões 2D, modelo 3D e enquadramento. Os arquivos são extraídos em blocos pequenos para reduzir picos de memória. A importação mantém seus dispositivos e modo de desempenho. Pacotes antigos continuam aceitos; pacotes novos com expressões exigem a versão 3.3 ou posterior. Perfis guardam caminhos locais e não são pacotes portáteis. Dados locais ficam em `%USERPROFILE%\.avatarcam_2d`.
 
 Pastas 2D aceitam idle, talk/fala, blink/piscar e pet. A câmera é processada em memória; o app não envia nem grava seus frames. O diagnóstico não inclui imagens da câmera. Configurações da versão anterior são preservadas.
 
@@ -83,6 +85,13 @@ Pastas 2D aceitam idle, talk/fala, blink/piscar e pet. A câmera é processada e
 | Ctrl+P | Pausar / retomar |
 | Ctrl+Shift+O | Saída |
 | Espaço | Testar fala |
+| F8 | Mostrar / ocultar controles |
+| F9 | Pausar / retomar |
+| F10 | Microfone |
+| Ctrl+Alt+1 | Expressão automática |
+| Ctrl+Alt+2…6 | Neutro, feliz, bravo, triste, surpreso |
+
+Os atalhos de live funcionam nos controles e na saída. Para usá-los enquanto outro programa está em foco, marque **Configurações → Atalhos de live → Usar também fora do app**. Essa opção começa desligada; desmarcar libera os atalhos registrados pelo 2DCam. Expressões indisponíveis no personagem são ignoradas.
 
 ## Código e créditos
 

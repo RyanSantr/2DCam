@@ -210,7 +210,12 @@ function animate(now) {
     if (bridge) bridge.report(JSON.stringify(window.studioDiagnostics));
   }
 }
-new ResizeObserver(() => { const w=stage.clientWidth,h=stage.clientHeight; renderer.setSize(w,h,false); camera.aspect=w/Math.max(h,1); camera.updateProjectionMatrix(); }).observe(stage);
+new ResizeObserver(() => {
+  const w=stage.clientWidth,h=stage.clientHeight,previousAspect=camera.aspect;
+  if (!w || !h) return;
+  renderer.setSize(w,h,false); camera.aspect=w/Math.max(h,1); camera.updateProjectionMatrix();
+  if (model && !snapshot.camera && Math.abs(previousAspect-camera.aspect)>.01) fitCamera();
+}).observe(stage);
 $('test').onclick=()=>command('test'); $('microphone').onclick=()=>command('microphone');
 $('reset').onclick=async()=>{ if(await command('reset_camera')) { fitCamera(); toast('Enquadramento restaurado.'); } };
 $('save-camera').onclick=async()=>{ if(await command('camera',{position:camera.position.toArray(),target:controls.target.toArray()})) toast('Enquadramento salvo e aplicado à captura OBS.'); };
