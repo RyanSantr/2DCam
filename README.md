@@ -1,4 +1,4 @@
-# 2DCam Studio 3.3
+# 2DCam Studio 3.4
 
 [![Testes Windows](https://github.com/RyanSantr/2DCam/actions/workflows/tests.yml/badge.svg)](https://github.com/RyanSantr/2DCam/actions/workflows/tests.yml)
 
@@ -19,13 +19,19 @@ Abrir novamente traz os controles da instância existente para a frente. Cada bi
 ## Controles
 
 - **Importar avatar:** PNG/GIF, VRM/GLB ou .avatarpack. Também aceita arrastar um arquivo.
-- **Avatar:** voz, câmera e expressões.
-- **Biblioteca:** avatares recentes, poses 2D, pacotes e perfis.
+- **Avatar:** voz, câmera e expressões. Microfone, câmera e pausa também ficam no topo, acessíveis em todas as abas.
+- **Biblioteca:** miniaturas, favoritos, nomes editáveis e filtros por 2D/3D. Clique no item para usar o avatar; poses, pacotes e perfis ficam em grupos recolhidos.
 - **Câmera:** dispositivo, calibração e resposta dos movimentos. A prévia só ocupa memória enquanto visível.
-- **Configurações:** desempenho, tamanho/fundo da saída e diagnóstico.
+- **Configurações:** desempenho e saída visíveis; áudio, imagem e atalhos em grupos recolhidos. Clique no título para abrir o grupo.
 - **Pausar:** desliga câmera e microfone e congela a animação. Retomar reativa os dispositivos que estavam ligados.
 
 Para começar: importe o personagem, ative o microfone ou **Ligar rastreamento**, olhe para a câmera e **Calibrar posição neutra**. Ajuste o enquadramento com o mouse. Use a roda para aproximar; no 3D, o botão direito move a câmera. Salve a posição antes de abrir a saída.
+
+## Dispositivos e reconexão
+
+A seleção mostra nomes de microfones e câmeras disponíveis. Use **Câmera → Atualizar dispositivos** após conectar um USB. Câmeras são enumeradas pelo mesmo backend da captura; se o nome não puder ser lido, permanece a seleção por número. A enumeração não inicia a captura.
+
+O app tenta recuperar somente câmera/microfone que você tenha ligado. A espera entre falhas cresce de 2 até 30 segundos. **Desligar** ou **Pausar** cancela as tentativas; retomar recupera as entradas que estavam solicitadas, mesmo se desconectadas. Entradas começam desligadas a cada abertura. O dispositivo identificado é procurado novamente após mudança de índice; se não for encontrado, o app espera em vez de ativar outro dispositivo. Mudança de nome ou porta USB pode exigir selecionar o dispositivo novamente. Câmera em uso por outro programa, permissões e drivers podem impedir a conexão.
 
 ## Desempenho
 
@@ -69,13 +75,15 @@ VRM/GLB devem ser autocontidos, com recursos incorporados, sem Draco/Meshopt/KTX
 
 ## Biblioteca e privacidade
 
-Arquivos importados são copiados para a biblioteca local. Recentes guardam até 12 avatares. Perfis guardam poses, expressões 2D, pet, modelo, enquadramento, ajustes de voz/movimento, desempenho e saída. Carregar um perfil substitui as poses vazias corretamente; um arquivo obrigatório ausente mantém o avatar atual. É possível excluir um perfil sem apagar as imagens. Perfis antigos continuam disponíveis.
+Arquivos importados são copiados para a biblioteca local. A biblioteca guarda até 48 avatares; favoritos têm prioridade ao atingir o limite. Recentes guardam até 12. Renomear altera apenas o nome exibido. Miniaturas 3D são geradas a partir da prévia do avatar, quando visível, em até 96 × 96; não capturam a imagem da câmera. Perfis guardam poses, expressões 2D, pet, modelo, enquadramento, ajustes de voz/movimento, desempenho e saída. Carregar um perfil substitui as poses vazias corretamente; um arquivo obrigatório ausente mantém o avatar atual. É possível excluir um perfil sem apagar as imagens. Perfis antigos continuam disponíveis.
 
 Pacotes .avatarpack levam imagens, poses, expressões 2D, modelo 3D e enquadramento. Os arquivos são extraídos em blocos pequenos para reduzir picos de memória. A importação mantém seus dispositivos e modo de desempenho. Pacotes antigos continuam aceitos; pacotes novos com expressões exigem a versão 3.3 ou posterior. Perfis guardam caminhos locais e não são pacotes portáteis. Dados locais ficam em `%USERPROFILE%\.avatarcam_2d`.
 
 Pastas 2D aceitam idle, talk/fala, blink/piscar e pet. A câmera é processada em memória; o app não envia nem grava seus frames. O diagnóstico não inclui imagens da câmera. Configurações da versão anterior são preservadas.
 
 ## Atalhos
+
+A tabela mostra os padrões. Em **Configurações → Atalhos de live → Personalizar atalhos**, pressione uma nova combinação ou limpe o campo para desativar a ação. Combinações repetidas e atalhos reservados são rejeitados. A edição suspende os atalhos do app para não disparar ações ao digitar. Restaurar padrões desfaz a personalização.
 
 | Atalho | Ação |
 |---|---|

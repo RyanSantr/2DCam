@@ -29,6 +29,12 @@ def sanitize_preferences(value):
     result['hide_controls'] = result.get('hide_controls') is True
     result['output_on_top'] = result.get('output_on_top') is True
     result['global_shortcuts'] = result.get('global_shortcuts') is True
+    from avatarcam.desktop.shortcuts import validate_bindings
+    try: result['shortcut_bindings'] = validate_bindings(result.get('shortcut_bindings', {}))
+    except ValueError: result['shortcut_bindings'] = validate_bindings({})
+    for key in ('camera_identity', 'microphone_identity'):
+        value = result.get(key, '')
+        result[key] = value if isinstance(value, str) and len(value) <= 4096 else ''
     result['expressions2d'] = expressions(result.get('expressions2d'))
     modes = result.get('profile_modes', {})
     result['profile_modes'] = {key: mode for key, mode in modes.items() if isinstance(key, str) and mode in ('2D', '3D')} if isinstance(modes, dict) else {}
@@ -55,4 +61,25 @@ def sanitize_preferences(value):
         if len(valid) == 12:
             break
     result['recent_avatars'] = valid
+    from avatarcam.desktop.library import update_library
+    library = []
+    raw = result.get('avatar_library', valid)
+    # Reutiliza a validação de poses/expressões sem recursão de preferências.
+    for entry in (raw[:48] if isinstance(raw, list) else []):
+        if not isinstance(entry, dict) or not isinstance(entry.get('name'), str): continue
+        if entry.get('mode') == '3D' and isinstance(entry.get('path'), str) and 0 < len(entry['path']) <= 4096:
+            item = dict(mode='3D', name=entry['name'][:64], path=entry['path'])
+        elif entry.get('mode') == '2D' and isinstance(entry.get('sets'), dict) and image_paths(entry['sets'].get('idle')) and entry['sets']['idle']:
+            item = dict(mode='2D', name=entry['name'][:64], sets={key: list(entry['sets'].get(key, [])) if image_paths(entry['sets'].get(key, [])) else [] for key in ROLES}, expressions=expressions(entry.get('expressions')))
+        else: continue
+        item['favorite'] = entry.get('favorite') is True
+        item['renamed'] = entry.get('renamed') is True
+        library.append(item)
+    # Mantém a ordem e elimina entradas repetidas ao migrar os recentes.
+    merged = []
+    for item in reversed(library):
+        merged = update_library(merged, item)
+        stored = next(entry for entry in merged if entry.get('path') == item.get('path') and entry.get('sets') == item.get('sets'))
+        stored.update(favorite=item['favorite'], renamed=item['renamed'], name=item['name'])
+    result['avatar_library'] = merged
     return result

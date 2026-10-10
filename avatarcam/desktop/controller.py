@@ -15,6 +15,8 @@ from avatarcam.core.speech_detector import SpeechDetector
 from avatarcam.core.timing import calibrate_noise
 from avatarcam.audio.microphone import MicrophoneInput
 from avatarcam.tracking.face import FaceTracker, FaceSmoother, empty_face
+from avatarcam.desktop.inputs import InputRecovery
+from avatarcam.desktop.library import avatar_id, update_library, clean_name
 
 ASSETS = Path(__file__).resolve().parents[1] / 'assets'
 PACK_SETTINGS = ('avatar_scale','avatar_offset_x','avatar_offset_y','avatar_rotation','animation_fps','camera3d',
@@ -58,6 +60,7 @@ class StudioController(QObject):
         self.library_revision=0
         self.manual_expression = None; self.renderer_report = {}; self.camera_frame = None
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='ImportAvatar')
+        self.inputs = InputRecovery(self)
         self.jobs = []; self.closing = False; self.last_tick = time.monotonic()
         self.save_timer = QTimer(self); self.save_timer.setSingleShot(True); self.save_timer.timeout.connect(self.save)
         self.timer = QTimer(self); self.timer.timeout.connect(self.tick); self.timer.start(33)
@@ -79,10 +82,8 @@ class StudioController(QObject):
 
     def toggle_pause(self):
         if not self.paused:
-            self.resume_inputs=(self.microphone.is_running,self.tracker.running)
-            self.tracker.stop()
-            try: self.microphone.stop()
-            except Exception as error: self.notice.emit(str(error))
+            self.resume_inputs=(self.inputs.wanted['audio'],self.inputs.wanted['camera'])
+            self.inputs.request('audio',False); self.inputs.request('camera',False)
             self.face=empty_face(); self.level=0.; self.speaking=False
             self.paused=True; self.calibration_until=0.; self.noise_samples=[]; self.test_until=0.
             self.notice.emit('Pausado. Câmera e microfone desligados.')
@@ -162,19 +163,14 @@ class StudioController(QObject):
     def toggle_microphone(self):
         self.paused=False
         self.set_render_active(self.render_active)
-        try:
-            if self.microphone.is_running: self.microphone.stop()
-            else: self.microphone.start()
-        except Exception as exc: self.notice.emit(str(exc))
+        self.inputs.request('audio', not self.inputs.wanted['audio'])
         self.changed.emit()
 
     def toggle_tracking(self):
         self.paused=False
         self.set_render_active(self.render_active)
-        if self.tracker.running:
-            self.tracker.stop(); self.face = empty_face(); self.smoother = FaceSmoother()
-        else:
-            self.tracker.start(int(self.preference('camera_device',0,0,20)))
+        self.inputs.request('camera', not self.inputs.wanted['camera'])
+        if not self.inputs.wanted['camera']: self.face = empty_face(); self.smoother = FaceSmoother()
         self.changed.emit()
 
     def calibrate_face(self):
@@ -194,6 +190,9 @@ class StudioController(QObject):
         return True
 
     def avatar_name(self):
+        current = dict(mode=self.mode, path=self.model_path, sets=self.sets)
+        entry = next((entry for entry in self.preferences['avatar_library'] if avatar_id(entry) == avatar_id(current)), None)
+        if entry and entry.get('renamed'): return entry['name']
         if self.mode=='2D': return self.preferences.get('avatar2d_name','Avatar 2D')
         name=Path(self.model_path).stem
         suffix=name.rsplit('_',1)[-1]
@@ -201,7 +200,7 @@ class StudioController(QObject):
         return 'Avatar de exemplo' if name=='AvatarHumanoide' else name
 
     def remember_avatar(self):
-        entry=dict(mode=self.mode,name=Path(self.model_path).stem if self.mode=='3D' else self.preferences.get('avatar2d_name','Avatar 2D'))
+        entry=dict(mode=self.mode,name=self.avatar_name())
         if self.mode=='3D': entry['path']=self.model_path
         else:
             entry['sets']={key:list(paths) for key,paths in self.sets.items() if not key.startswith('_')}
@@ -211,12 +210,31 @@ class StudioController(QObject):
         identity=entry.get('path') or entry.get('sets',{}).get('idle')
         recent=[old for old in recent if isinstance(old,dict) and (old.get('path') or old.get('sets',{}).get('idle'))!=identity]
         self.preferences['recent_avatars']=[entry]+recent[:11]
+        self.preferences['avatar_library'] = update_library(self.preferences['avatar_library'], entry)
         self.library_revision+=1
+
+    def edit_library(self, identity, name=None, favorite=None):
+        entry = next((entry for entry in self.preferences['avatar_library'] if avatar_id(entry) == identity), None)
+        if entry is None: return False
+        if name is not None:
+            name = clean_name(name)
+            if not name: return False
+            entry['name'] = name; entry['renamed'] = True
+        if favorite is not None: entry['favorite'] = bool(favorite)
+        self.library_revision += 1; self.defer_save(); self.changed.emit()
+        return True
+
+    def load_library(self, identity):
+        entry = next((entry for entry in self.preferences['avatar_library'] if avatar_id(entry) == identity), None)
+        if entry is not None: self.load_entry(entry)
 
     def load_recent(self, index):
         entries=self.preferences.get('recent_avatars',[])
         if not isinstance(index,int) or index<0 or index>=len(entries): return
         entry=entries[index]
+        self.load_entry(entry)
+
+    def load_entry(self, entry):
         if entry.get('mode')=='3D':
             path=entry.get('path','')
             if Path(path).is_file(): self.use_model(path)
@@ -298,7 +316,8 @@ class StudioController(QObject):
 
     def tick(self):
         now = time.monotonic(); dt = min(.2, now-self.last_tick); self.last_tick = now
-        raw = self.microphone.read_level()
+        self.inputs.poll(now)
+        raw = self.microphone.read_level() if self.inputs.wanted['audio'] and not self.paused else 0.
         self.speech.sensitivity = self.settings.sensitivity; self.speech.smoothing = self.settings.smoothing
         state = self.speech.update(raw, self.microphone.voice_allowed)
         self.level, self.speaking = state.level, state.speaking
@@ -313,10 +332,6 @@ class StudioController(QObject):
         self.face = self.smoother.update(sample, dt, self.preference('face_smoothing',.55,.1,.9), self.preference('face_strength',1.,.2,2.))
         if error and error != self.error_seen: self.error_seen = error; self.notice.emit(error)
         if not error: self.error_seen = ''
-        if self.microphone.is_running and now-self.microphone.last_audio_time > 3:
-            try: self.microphone.stop()
-            except Exception: pass
-            self.notice.emit('Microfone desconectado. Selecione o dispositivo e ative novamente.')
         for future, success in list(self.jobs):
             if future.done():
                 self.jobs.remove((future,success))
@@ -326,7 +341,8 @@ class StudioController(QObject):
 
     def close(self):
         if self.closing: return
-        self.closing = True; self.timer.stop(); self.save_timer.stop(); self.tracker.stop()
+        self.closing = True; self.timer.stop(); self.save_timer.stop()
+        self.inputs.close()
         try: self.microphone.stop()
         except Exception: pass
         self.executor.shutdown(wait=True, cancel_futures=True); self.save()

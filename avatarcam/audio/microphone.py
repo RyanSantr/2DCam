@@ -37,11 +37,14 @@ class MicrophoneInput:
 
     @property
     def is_running(self) -> bool:
-        return self._stream is not None and bool(self._stream.active)
+        try: return self._stream is not None and bool(self._stream.active)
+        except Exception: return False
 
     def start(self) -> None:
         if self.is_running:
             return
+        if self._stream is not None:
+            self.stop()
 
         try:
             import sounddevice as sd
@@ -102,6 +105,23 @@ class MicrophoneInput:
             if int(device.get("max_input_channels", 0)) > 0:
                 name = str(device.get("name", f"Dispositivo {index}"))
                 result.append((f"{index}: {name}", index))
+        return result
+
+    @staticmethod
+    def input_catalog(refresh=False):
+        import sounddevice as sd
+        if refresh:
+            # PortAudio da versão fixada só atualiza hotplug ao reinicializar.
+            # Chamado apenas pelo worker, com o stream deste app fechado.
+            if sd._initialized: sd._terminate()
+            sd._initialize()
+        hosts = sd.query_hostapis()
+        result = [{'name': 'Padrão do sistema', 'index': None, 'id': ''}]
+        for index, device in enumerate(sd.query_devices()):
+            if device['max_input_channels'] > 0:
+                host = hosts[device['hostapi']]['name']
+                name = device['name']
+                result.append({'name': f'{name} · {host}', 'index': index, 'id': host + ':' + name})
         return result
 
     def stop(self) -> None:
