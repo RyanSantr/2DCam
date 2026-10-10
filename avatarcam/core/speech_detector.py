@@ -1,4 +1,6 @@
 from dataclasses import dataclass
+import time
+import math
 
 
 @dataclass
@@ -8,42 +10,32 @@ class SpeechState:
 
 
 class SpeechDetector:
-    """Converte volume bruto em estado estavel de fala."""
-
-    def __init__(self, sensitivity: float, smoothing: float, mouth_hold_ticks: int = 7) -> None:
+    """Suavizacao e fechamento da boca independentes do FPS."""
+    def __init__(self, sensitivity: float, smoothing: float, mouth_hold_ticks: int = 7, clock=time.monotonic):
         self.sensitivity = sensitivity
         self.smoothing = smoothing
         self.mouth_hold_ticks = mouth_hold_ticks
-        self.smoothed_level = 0.0
-        self.speaking = False
-        self.voice_frames = 0
-        self.silence_frames = 0
+        self.clock = clock
+        self.reset()
 
     def reset(self) -> None:
         self.smoothed_level = 0.0
         self.speaking = False
-        self.voice_frames = 0
-        self.silence_frames = 0
+        self.last_time = self.clock()
+        self.last_voice = float('-inf')
 
-    def update(self, raw_level: float) -> SpeechState:
-        raw_level = max(0.0, min(1.0, raw_level))
-        # Ataque rapido reduz o atraso da boca; release mais suave evita piscadas falsas.
-        keep = min(self.smoothing, 0.24) if raw_level > self.smoothed_level else self.smoothing
-        self.smoothed_level = (self.smoothed_level * keep) + (raw_level * (1.0 - keep))
-
-        on_threshold = self.sensitivity
-        off_threshold = max(0.02, self.sensitivity * 0.58)
-
-        if self.smoothed_level >= on_threshold:
-            self.voice_frames += 1
-            self.silence_frames = 0
-        elif self.smoothed_level <= off_threshold:
-            self.silence_frames += 1
-            self.voice_frames = 0
-
-        if not self.speaking and self.voice_frames >= 1:
+    def update(self, raw_level: float, voice_allowed: bool = True) -> SpeechState:
+        now = self.clock()
+        dt = max(.001, min(1, now - self.last_time))
+        self.last_time = now
+        raw_level = max(0, min(1, raw_level)) if math.isfinite(raw_level) else 0
+        keep = min(self.smoothing, .24) if raw_level > self.smoothed_level else self.smoothing
+        keep = max(.01, min(.99, keep)) ** (dt / .033)
+        self.smoothed_level = self.smoothed_level * keep + raw_level * (1 - keep)
+        threshold = max(.02, self.sensitivity * .58) if self.speaking else self.sensitivity
+        if voice_allowed and self.smoothed_level >= threshold:
+            self.last_voice = now
             self.speaking = True
-        elif self.speaking and self.silence_frames >= self.mouth_hold_ticks:
+        elif now - self.last_voice >= self.mouth_hold_ticks * .033:
             self.speaking = False
-
-        return SpeechState(level=self.smoothed_level, speaking=self.speaking)
+        return SpeechState(self.smoothed_level, self.speaking)

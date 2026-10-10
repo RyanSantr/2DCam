@@ -2,24 +2,42 @@ from __future__ import annotations
 
 import math
 import queue
-import struct
+import time
+import numpy as np
 from typing import Optional
 
 
 class MicrophoneInput:
     """Captura audio do microfone e entrega volume RMS normalizado."""
 
-    def __init__(self, samplerate: int = 44100, blocksize: int = 512) -> None:
+    def __init__(self, samplerate: int = 48000, blocksize: int = 960) -> None:
         self.samplerate = samplerate
         self.blocksize = blocksize
         self.device_index: int | None = None
         self._stream = None
         self._levels: queue.Queue[float] = queue.Queue(maxsize=3)
         self._sounddevice = None
+        self.last_audio_time = 0.0
+        self.last_voice_time = 0.0
+        self.audio_warnings = 0
+        self.speech_mode = 'volume'
+        try:
+            import webrtcvad
+            self._vad = webrtcvad.Vad(2)
+        except ImportError:
+            self._vad = None
+
+    @property
+    def vad_available(self) -> bool:
+        return self._vad is not None
+
+    @property
+    def voice_allowed(self) -> bool:
+        return self.speech_mode != 'vad' or (self._vad is not None and time.monotonic() - self.last_voice_time < .12)
 
     @property
     def is_running(self) -> bool:
-        return self._stream is not None
+        return self._stream is not None and bool(self._stream.active)
 
     def start(self) -> None:
         if self.is_running:
@@ -33,12 +51,26 @@ class MicrophoneInput:
             ) from exc
 
         self._sounddevice = sd
+        if self._stream is not None:
+            self.stop()
+        if self.speech_mode == 'vad' and not self.vad_available:
+            raise RuntimeError('Filtro de voz indisponivel. Instale webrtcvad-wheels ou use o modo volume.')
+        # Negocia uma taxa suportada pelo dispositivo e pelo detector de voz.
+        for rate in (48000, 32000, 16000, 8000):
+            try:
+                sd.check_input_settings(device=self.device_index, channels=1, dtype='int16', samplerate=rate)
+                self.samplerate, self.blocksize = rate, rate // 50
+                break
+            except Exception:
+                continue
+        self.last_audio_time = time.monotonic()
+        self.last_voice_time = 0.0
         stream = sd.RawInputStream(
             device=self.device_index,
             channels=1,
             samplerate=self.samplerate,
             blocksize=self.blocksize,
-            dtype="float32",
+            dtype="int16",
             callback=self._callback,
         )
         try:
@@ -76,12 +108,14 @@ class MicrophoneInput:
         if self._stream is None:
             return
 
+        stream, self._stream = self._stream, None
         try:
-            self._stream.stop()
+            stream.stop()
         finally:
-            self._stream.close()
-        self._stream = None
-        self._clear_queue()
+            try:
+                stream.close()
+            finally:
+                self._clear_queue()
 
     def read_level(self) -> float:
         latest: Optional[float] = None
@@ -92,19 +126,18 @@ class MicrophoneInput:
                 break
         return latest if latest is not None else 0.0
 
-    def _callback(self, indata, frames, time, status) -> None:
+    def _callback(self, indata, frames, time_info, status) -> None:
         if status:
-            # Evita interromper a UI por mensagens ocasionais do driver de audio.
-            pass
-
-        total = 0.0
-        sample_count = max(1, len(indata) // 4)
-
-        for index in range(sample_count):
-            value = struct.unpack_from("f", indata, index * 4)[0]
-            total += value * value
-
-        rms = math.sqrt(total / sample_count)
+            self.audio_warnings += 1
+        self.last_audio_time = time.monotonic()
+        samples = np.frombuffer(indata, dtype=np.int16).astype(np.float32) / 32768
+        rms = math.sqrt(float(np.mean(samples * samples))) if samples.size else 0.0
+        if self._vad is not None and self.speech_mode == 'vad':
+            try:
+                if self._vad.is_speech(bytes(indata), self.samplerate):
+                    self.last_voice_time = self.last_audio_time
+            except (ValueError, RuntimeError):
+                self.audio_warnings += 1
         level = min(1.0, rms * 8.0)
 
         if self._levels.full():

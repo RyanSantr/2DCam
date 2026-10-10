@@ -18,14 +18,17 @@ class HotkeyManager:
     def available(self) -> bool:
         return self._keyboard is not None
 
-    def register(self, hotkey: str, callback) -> None:
+    def register(self, hotkey: str, callback) -> bool:
         if not self._keyboard or not hotkey.strip():
-            return
+            return False
         try:
             handle = self._keyboard.add_hotkey(hotkey, callback)
             self._handles.append(handle)
-        except Exception:
-            pass
+            return True
+        except Exception as exc:
+            import logging
+            logging.getLogger('avatarcam').warning('Atalho global %s indisponivel: %s', hotkey, exc)
+            return False
 
     def clear(self) -> None:
         if not self._keyboard:

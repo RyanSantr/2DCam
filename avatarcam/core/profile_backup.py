@@ -3,6 +3,9 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 import shutil
+from avatarcam.core.persistence import atomic_write_text
+from avatarcam.core.settings import Settings
+import json
 
 from avatarcam.core.settings import APP_DIR, SETTINGS_FILE
 
@@ -17,7 +20,7 @@ def create_settings_backup(reason: str = "manual") -> Path | None:
         return None
 
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     safe_reason = "".join(char for char in reason.lower().replace(" ", "_") if char.isalnum() or char == "_")
     backup_path = BACKUP_DIR / f"settings_{stamp}_{safe_reason or 'backup'}.json"
     shutil.copy2(SETTINGS_FILE, backup_path)
@@ -38,7 +41,10 @@ def restore_settings_backup(backup_path: Path | None = None) -> Path:
         raise FileNotFoundError("Nenhum backup de configuracao encontrado.")
 
     APP_DIR.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source, SETTINGS_FILE)
+    content = source.read_text(encoding='utf-8')
+    Settings.from_dict(json.loads(content))
+    create_settings_backup('antes_restaurar')
+    atomic_write_text(SETTINGS_FILE, content)
     return source
 
 

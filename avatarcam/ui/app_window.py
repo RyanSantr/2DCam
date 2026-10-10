@@ -22,73 +22,16 @@ from avatarcam.ui.obs_window import ObsOutputWindow
 from avatarcam.ui.setup_wizard import SetupWizard
 from avatarcam.ui.theme import DARK, LIGHT, OBS_BACKGROUNDS
 from avatarcam.ui.tray import TrayController
+from avatarcam.ui.studio_controls import StudioControls
+from avatarcam.ui.profile_controls import ProfileControls
+from avatarcam.ui.scene_controls import SceneControls
+from avatarcam.ui.asset_controls import AssetControls
+from avatarcam.ui.shortcut_controls import ShortcutControls
+from avatarcam.ui.shortcut_defaults import DEFAULT_HOTKEYS, HOTKEY_ACTION_LABELS, HOTKEY_CHOICES
+from avatarcam.core.timing import Deadline, calibrate_noise
 
 
-DEFAULT_HOTKEYS = {
-    "toggle_mic": "f8",
-    "test_speech": "f9",
-    "show_controls": "f10",
-    "toggle_obs": "f11",
-    "toggle_pet": "f12",
-    "live_mode": "ctrl+f11",
-    "scene_1": "ctrl+1",
-    "scene_2": "ctrl+2",
-    "scene_3": "ctrl+3",
-    "scene_4": "ctrl+4",
-}
-
-HOTKEY_ACTION_LABELS = {
-    "toggle_mic": "Microfone liga/desliga",
-    "test_speech": "Teste de fala",
-    "show_controls": "Mostrar controles",
-    "toggle_obs": "Abrir/ocultar OBS",
-    "toggle_pet": "Mostrar/ocultar pet",
-    "live_mode": "Ativar modo live",
-    "scene_1": "Aplicar cena 1",
-    "scene_2": "Aplicar cena 2",
-    "scene_3": "Aplicar cena 3",
-    "scene_4": "Aplicar cena 4",
-}
-
-HOTKEY_CHOICES = (
-    "",
-    "f1",
-    "f2",
-    "f3",
-    "f4",
-    "f5",
-    "f6",
-    "f7",
-    "f8",
-    "f9",
-    "f10",
-    "f11",
-    "f12",
-    "ctrl+1",
-    "ctrl+2",
-    "ctrl+3",
-    "ctrl+4",
-    "ctrl+5",
-    "ctrl+6",
-    "ctrl+7",
-    "ctrl+8",
-    "ctrl+9",
-    "alt+1",
-    "alt+2",
-    "alt+3",
-    "alt+4",
-    "ctrl+f9",
-    "ctrl+f10",
-    "ctrl+f11",
-    "ctrl+f12",
-    "alt+f9",
-    "alt+f10",
-    "alt+f11",
-    "alt+f12",
-)
-
-
-class AvatarCamApp(tk.Tk):
+class AvatarCamApp(StudioControls, ProfileControls, SceneControls, AssetControls, ShortcutControls, tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.title("AvatarCam 2D")
@@ -102,9 +45,10 @@ class AvatarCamApp(tk.Tk):
         self.microphone = MicrophoneInput()
         self.microphone.set_device(self.settings.microphone_device)
         self.detector = SpeechDetector(self.settings.sensitivity, self.settings.smoothing, self.settings.mouth_hold_ticks)
-        self.test_ticks = 0
+        self.test_deadline = None
         self.calibration_samples: list[float] = []
-        self.calibration_ticks = 0
+        self.calibration_deadline = None
+        self.last_visual_update = 0.0
         self.render_frames = 0
         self.last_fps_time = 0.0
         self.render_fps = 0
@@ -126,12 +70,13 @@ class AvatarCamApp(tk.Tk):
         self.hotkeys = HotkeyManager()
         self.local_hotkey_sequences: list[str] = []
         self.tray = TrayController(self)
+        self._init_studio()
 
         self._configure_style()
         self._build_layout()
         self._apply_theme()
         self._bind_hotkeys()
-        self.tray.start()
+        self.tray_available = self.tray.start()
         self.protocol("WM_DELETE_WINDOW", self._hide_controls)
         if self.settings.auto_start_minimized:
             self.after(300, self.withdraw)
@@ -156,8 +101,8 @@ class AvatarCamApp(tk.Tk):
         header = ttk.Frame(self.stage_frame)
         header.grid(row=0, column=0, sticky="ew", pady=(0, 12))
         header.columnconfigure(0, weight=1)
-        ttk.Label(header, text="AvatarCam 2D", style="Eyebrow.TLabel").grid(row=0, column=0, sticky="w")
-        ttk.Label(header, text="Sua camera vira um avatar animado", style="Title.TLabel").grid(row=1, column=0, sticky="w")
+        ttk.Label(header, text="2DCam STUDIO", style="Eyebrow.TLabel").grid(row=0, column=0, sticky="w")
+        ttk.Label(header, text="Sua voz. Seu avatar. Sua live.", style="Title.TLabel").grid(row=1, column=0, sticky="w")
         self.theme_button = ttk.Button(header, text="Tema", command=self._toggle_theme)
         self.theme_button.grid(row=0, column=1, rowspan=2, sticky="e")
 
@@ -508,6 +453,7 @@ class AvatarCamApp(tk.Tk):
         self.avatar_label.grid(row=4, column=0, sticky="w", pady=(8, 0))
         self.hotkey_label = ttk.Label(self.control_frame, text="Atalhos configuraveis", style="Body.TLabel")
         self.hotkey_label.grid(row=5, column=0, sticky="w", pady=(8, 0))
+        self._build_studio(header)
 
     def _sync_control_scroll(self, _event: tk.Event) -> None:
         self.control_canvas.configure(scrollregion=self.control_canvas.bbox("all"))
@@ -579,229 +525,6 @@ class AvatarCamApp(tk.Tk):
         self.avatar_canvas.configure(bg=c["panel"])
         self.control_canvas.configure(bg=c["bg"])
 
-    def _bind_hotkeys(self) -> None:
-        for sequence in self.local_hotkey_sequences:
-            self.unbind_all(sequence)
-        self.local_hotkey_sequences.clear()
-        self.hotkeys.clear()
-
-        used_sequences: set[str] = set()
-        used_hotkeys: set[str] = set()
-        for action, hotkey in self._hotkey_config().items():
-            normalized = self._normalize_hotkey(hotkey)
-            if not normalized or normalized in used_hotkeys:
-                continue
-            used_hotkeys.add(normalized)
-            sequence = self._tk_sequence_for_hotkey(normalized)
-            if sequence and sequence not in used_sequences:
-                self.bind_all(sequence, lambda _event, selected=action: self._run_hotkey_action(selected))
-                self.local_hotkey_sequences.append(sequence)
-                used_sequences.add(sequence)
-            self.hotkeys.register(normalized, lambda selected=action: self.after(0, lambda: self._run_hotkey_action(selected)))
-        self._refresh_hotkey_label()
-
-    def _hotkey_config(self) -> dict[str, str]:
-        configured = self.settings.hotkeys or {}
-        return {
-            action: self._normalize_hotkey(str(configured.get(action, default)))
-            for action, default in DEFAULT_HOTKEYS.items()
-        }
-
-    def _normalize_hotkey(self, value: str) -> str:
-        return value.strip().lower().replace(" ", "").replace("control+", "ctrl+")
-
-    def _tk_sequence_for_hotkey(self, hotkey: str) -> str | None:
-        parts = [part for part in hotkey.split("+") if part]
-        if not parts:
-            return None
-        key = parts[-1]
-        modifiers = []
-        for part in parts[:-1]:
-            if part == "ctrl":
-                modifiers.append("Control")
-            elif part == "alt":
-                modifiers.append("Alt")
-            elif part == "shift":
-                modifiers.append("Shift")
-            else:
-                return None
-        if key.startswith("f") and key[1:].isdigit():
-            key_name = key.upper()
-        elif len(key) == 1:
-            key_name = f"Key-{key}"
-        else:
-            key_name = key
-        return "<" + "-".join([*modifiers, key_name]) + ">"
-
-    def _run_hotkey_action(self, action: str) -> None:
-        if action == "toggle_mic":
-            self._toggle_microphone()
-        elif action == "test_speech":
-            self._trigger_test()
-        elif action == "show_controls":
-            self.show_controls()
-        elif action == "toggle_obs":
-            self._toggle_obs_window()
-        elif action == "toggle_pet":
-            self._toggle_pet()
-        elif action == "live_mode":
-            self._enable_live_mode()
-        elif action.startswith("scene_"):
-            try:
-                self._load_scene_by_index(int(action.rsplit("_", 1)[1]))
-            except ValueError:
-                return
-
-    def _save_hotkeys(self) -> None:
-        self.settings.hotkeys = {
-            action: self._normalize_hotkey(variable.get())
-            for action, variable in self.hotkey_vars.items()
-        }
-        self._bind_hotkeys()
-        self._save_settings_file()
-        self._set_status("Atalhos salvos", 2200)
-
-    def _reset_hotkeys(self) -> None:
-        for action, default in DEFAULT_HOTKEYS.items():
-            self.hotkey_vars[action].set(default)
-        self._save_hotkeys()
-
-    def _refresh_hotkey_label(self) -> None:
-        if not hasattr(self, "hotkey_label"):
-            return
-        enabled = sum(1 for value in self._hotkey_config().values() if value)
-        scope = "globais ativos" if self.hotkeys.available else "fallback com janela focada"
-        self.hotkey_label.configure(text=f"Atalhos: {enabled} configurados | {scope}")
-
-    def _scene_names(self) -> tuple[str, ...]:
-        scenes = self.settings.scenes or {}
-        defaults = [f"Cena {index}" for index in range(1, 5)]
-        names = sorted(set(scenes.keys()) | set(defaults) | {self.settings.active_scene})
-        return tuple(name for name in names if name)
-
-    def _current_scene_data(self) -> dict:
-        return {
-            "avatar_scale": float(self.avatar_scale_var.get()),
-            "avatar_offset_x": float(self.avatar_x_var.get()),
-            "avatar_offset_y": float(self.avatar_y_var.get()),
-            "avatar_rotation": float(self.avatar_rotation_var.get()),
-            "animation_fps": int(float(self.animation_fps_var.get())),
-            "idle_motion": self.idle_motion_var.get(),
-            "avatar_shadow": self.avatar_shadow_var.get(),
-            "obs_background": self.obs_background_var.get(),
-            "obs_resolution": self.obs_resolution_var.get(),
-            "obs_borderless": self.obs_borderless_var.get(),
-            "obs_always_on_top": self.obs_top_var.get(),
-            "pet_enabled": self.pet_enabled_var.get(),
-            "pet_size": float(self.pet_size_var.get()),
-            "pet_offset_x": float(self.pet_x_var.get()),
-            "pet_offset_y": float(self.pet_y_var.get()),
-            "pet_reaction": self.pet_reaction_var.get(),
-            "pet_reaction_strength": float(self.pet_strength_var.get()),
-            "pet_layer": self.pet_layer_var.get(),
-            "pet_opacity": float(self.pet_opacity_var.get()),
-            "pet_mirror": self.pet_mirror_var.get(),
-        }
-
-    def _refresh_scene_select(self) -> None:
-        if hasattr(self, "scene_select"):
-            self.scene_select.configure(values=self._scene_names())
-
-    def _save_scene(self, name: str) -> None:
-        name = (name or "").strip() or "Cena 1"
-        scenes = self.settings.scenes or {}
-        scenes[name] = self._current_scene_data()
-        self.settings.scenes = scenes
-        self.settings.active_scene = name
-        self.scene_var.set(name)
-        self._refresh_scene_select()
-        self._save_settings_file()
-        self._set_status(f"Cena salva: {name}", 2400)
-
-    def _new_scene(self) -> None:
-        name = simpledialog.askstring("Nova cena", "Nome da cena:", initialvalue=f"Cena {len(self._scene_names()) + 1}")
-        if not name or not name.strip():
-            return
-        self.scene_var.set(name.strip())
-        self._save_scene(name.strip())
-
-    def _delete_scene(self) -> None:
-        name = self.scene_var.get().strip()
-        scenes = self.settings.scenes or {}
-        if name not in scenes:
-            messagebox.showinfo("Excluir cena", "Essa cena ainda nao foi salva.")
-            return
-        if not messagebox.askyesno("Excluir cena", f"Excluir a cena {name}?"):
-            return
-        scenes.pop(name, None)
-        self.settings.scenes = scenes
-        fallback_names = sorted(set(scenes.keys()) | {f"Cena {index}" for index in range(1, 5)})
-        fallback = next(iter(fallback_names), "Cena 1")
-        self.settings.active_scene = fallback
-        self.scene_var.set(fallback)
-        self._refresh_scene_select()
-        self._save_settings_file()
-        self._set_status(f"Cena excluida: {name}", 2400)
-
-    def _load_scene_by_index(self, index: int) -> None:
-        names = self._scene_names()
-        if 0 <= index - 1 < len(names):
-            self._apply_scene(names[index - 1])
-
-    def _apply_scene(self, name: str) -> None:
-        name = (name or "").strip()
-        scene = (self.settings.scenes or {}).get(name)
-        if not scene:
-            self.scene_var.set(name or self.settings.active_scene)
-            self._set_status("Cena ainda nao salva", 2200)
-            return
-
-        self.scene_var.set(name)
-        self.avatar_scale_var.set(float(scene.get("avatar_scale", self.avatar_scale_var.get())))
-        self.avatar_x_var.set(float(scene.get("avatar_offset_x", self.avatar_x_var.get())))
-        self.avatar_y_var.set(float(scene.get("avatar_offset_y", self.avatar_y_var.get())))
-        self.avatar_rotation_var.set(float(scene.get("avatar_rotation", self.avatar_rotation_var.get())))
-        self.animation_fps_var.set(int(scene.get("animation_fps", self.animation_fps_var.get())))
-        self.idle_motion_var.set(bool(scene.get("idle_motion", self.idle_motion_var.get())))
-        self.avatar_shadow_var.set(bool(scene.get("avatar_shadow", self.avatar_shadow_var.get())))
-        self.obs_background_var.set(scene.get("obs_background", self.obs_background_var.get()))
-        self.obs_resolution_var.set(scene.get("obs_resolution", self.obs_resolution_var.get()))
-        self.obs_borderless_var.set(bool(scene.get("obs_borderless", self.obs_borderless_var.get())))
-        self.obs_top_var.set(bool(scene.get("obs_always_on_top", self.obs_top_var.get())))
-        self.pet_enabled_var.set(bool(scene.get("pet_enabled", self.pet_enabled_var.get())))
-        self.pet_size_var.set(float(scene.get("pet_size", self.pet_size_var.get())))
-        self.pet_x_var.set(float(scene.get("pet_offset_x", self.pet_x_var.get())))
-        self.pet_y_var.set(float(scene.get("pet_offset_y", self.pet_y_var.get())))
-        self.pet_reaction_var.set(scene.get("pet_reaction", self.pet_reaction_var.get()))
-        self.pet_strength_var.set(float(scene.get("pet_reaction_strength", self.pet_strength_var.get())))
-        self.pet_layer_var.set(scene.get("pet_layer", self.pet_layer_var.get()))
-        self.pet_opacity_var.set(float(scene.get("pet_opacity", self.pet_opacity_var.get())))
-        self.pet_mirror_var.set(bool(scene.get("pet_mirror", self.pet_mirror_var.get())))
-        self.settings.active_scene = name
-        self._save_settings()
-        self._save_obs_settings()
-        self._set_status(f"Cena aplicada: {name}", 2200)
-
-    def _profile_names(self) -> tuple[str, ...]:
-        profiles = self.settings.profiles or {}
-        names = sorted(set(profiles.keys()) | {self.settings.active_profile, "Default"})
-        return tuple(names)
-
-    def _clean_profile_name(self, name: str | None) -> str:
-        cleaned = (name or "").strip()
-        return cleaned or "Default"
-
-    def _profile_list(self, profile: dict, key: str) -> list[str]:
-        value = profile.get(key, [])
-        if isinstance(value, list):
-            return [str(item) for item in value]
-        return []
-
-    def _refresh_profile_select(self) -> None:
-        names = self._profile_names()
-        self.profile_select.configure(values=names)
-        if self.profile_var.get() not in names:
-            self.profile_var.set(self.settings.active_profile)
 
     def _set_status(self, text: str, hold_ms: int = 2200) -> None:
         self.status_label.configure(text=text)
@@ -831,10 +554,6 @@ class AvatarCamApp(tk.Tk):
             self.pending_settings_save = None
         self.settings.save()
 
-    def _expression_names(self) -> tuple[str, ...]:
-        expressions = self.settings.expressions or {}
-        names = sorted(set(expressions.keys()) | {self.settings.active_expression, "Default"})
-        return tuple(names)
 
     def _toggle_microphone(self) -> None:
         if self.microphone.is_running:
@@ -924,525 +643,6 @@ class AvatarCamApp(tk.Tk):
             self._toggle_obs_window()
         self._hide_controls()
 
-    def _choose_idle_images(self) -> None:
-        paths = self._pick_images("Escolha imagens idle")
-        if not paths:
-            return
-        self.idle_images = paths
-        self._save_image_sets()
-
-    def _choose_speaking_images(self) -> None:
-        paths = self._pick_images("Escolha imagens falando")
-        if not paths:
-            return
-        self.speaking_images = paths
-        self._save_image_sets()
-
-    def _choose_level_images(self) -> None:
-        low = self._pick_images("Escolha fala baixa")
-        if low:
-            self.speaking_low_images = low
-        mid = self._pick_images("Escolha fala media")
-        if mid:
-            self.speaking_mid_images = mid
-        high = self._pick_images("Escolha fala alta")
-        if high:
-            self.speaking_high_images = high
-        self._save_image_sets()
-
-    def _choose_blink_images(self) -> None:
-        paths = self._pick_images("Escolha imagens de piscar")
-        if not paths:
-            return
-        self.blink_images = paths
-        self._save_image_sets()
-
-    def _import_avatar_folder(self) -> None:
-        folder = filedialog.askdirectory(title="Escolha a pasta do avatar")
-        if not folder:
-            return
-
-        name = simpledialog.askstring("Nome do avatar", "Nome para salvar na biblioteca:", initialvalue=Path(folder).name)
-        if not name:
-            return
-        imported = import_avatar_folder(folder, name)
-        self.idle_images = imported["idle"]
-        self.speaking_images = imported["talk"]
-        self.speaking_low_images = imported["talk_low"]
-        self.speaking_mid_images = imported["talk_mid"]
-        self.speaking_high_images = imported["talk_high"]
-        self.blink_images = imported.get("blink", [])
-        self.pet_images = imported.get("pet", [])
-        self.pet_speaking_images = imported.get("pet_talk", [])
-        self.pet_loud_images = imported.get("pet_loud", [])
-
-        if not self.idle_images and not self.speaking_images:
-            messagebox.showinfo("Pasta sem avatar", "Use subpastas idle e talk, ou idle e fala.")
-            return
-
-        self._save_image_sets()
-
-    def _export_pack(self) -> None:
-        path = filedialog.asksaveasfilename(
-            title="Exportar avatarpack",
-            defaultextension=".avatarpack",
-            filetypes=(("Avatar pack", "*.avatarpack"), ("Zip", "*.zip")),
-        )
-        if not path:
-            return
-        export_avatar_pack(
-            path,
-            self._clean_profile_name(self.profile_var.get()) or "Avatar",
-            self._current_image_sets(),
-            {
-                "sensitivity": float(self.sensitivity_var.get()),
-                "smoothing": float(self.smoothing_var.get()),
-                "animation_fps": int(float(self.animation_fps_var.get())),
-                "avatar_scale": float(self.avatar_scale_var.get()),
-                "avatar_offset_x": float(self.avatar_x_var.get()),
-                "avatar_offset_y": float(self.avatar_y_var.get()),
-                "avatar_rotation": float(self.avatar_rotation_var.get()),
-                "idle_motion": self.idle_motion_var.get(),
-                "avatar_shadow": self.avatar_shadow_var.get(),
-                "pet_enabled": self.pet_enabled_var.get(),
-                "pet_size": float(self.pet_size_var.get()),
-                "pet_offset_x": float(self.pet_x_var.get()),
-                "pet_offset_y": float(self.pet_y_var.get()),
-                "pet_reaction": self.pet_reaction_var.get(),
-                "pet_reaction_strength": float(self.pet_strength_var.get()),
-                "pet_layer": self.pet_layer_var.get(),
-                "pet_opacity": float(self.pet_opacity_var.get()),
-                "pet_mirror": self.pet_mirror_var.get(),
-                "mouth_hold_ticks": int(float(self.mouth_hold_var.get())),
-            },
-        )
-        self._set_status("Avatarpack exportado")
-
-    def _import_pack(self) -> None:
-        path = filedialog.askopenfilename(
-            title="Importar avatarpack",
-            filetypes=(("Avatar pack", "*.avatarpack *.zip"), ("Todos os arquivos", "*.*")),
-        )
-        if not path:
-            return
-        pack = import_avatar_pack(path)
-        sets = pack["sets"]
-        self.idle_images = sets["idle"]
-        self.speaking_images = sets["talk"]
-        self.speaking_low_images = sets["talk_low"]
-        self.speaking_mid_images = sets["talk_mid"]
-        self.speaking_high_images = sets["talk_high"]
-        self.blink_images = sets.get("blink", [])
-        self.pet_images = sets.get("pet", [])
-        self.pet_speaking_images = sets.get("pet_talk", [])
-        self.pet_loud_images = sets.get("pet_loud", [])
-        settings = pack.get("settings", {})
-        self.sensitivity_var.set(float(settings.get("sensitivity", self.sensitivity_var.get())))
-        self.smoothing_var.set(float(settings.get("smoothing", self.smoothing_var.get())))
-        self.animation_fps_var.set(int(settings.get("animation_fps", self.animation_fps_var.get())))
-        self.avatar_scale_var.set(float(settings.get("avatar_scale", self.avatar_scale_var.get())))
-        self.avatar_x_var.set(float(settings.get("avatar_offset_x", self.avatar_x_var.get())))
-        self.avatar_y_var.set(float(settings.get("avatar_offset_y", self.avatar_y_var.get())))
-        self.avatar_rotation_var.set(float(settings.get("avatar_rotation", self.avatar_rotation_var.get())))
-        self.idle_motion_var.set(bool(settings.get("idle_motion", self.idle_motion_var.get())))
-        self.avatar_shadow_var.set(bool(settings.get("avatar_shadow", self.avatar_shadow_var.get())))
-        self.pet_enabled_var.set(bool(settings.get("pet_enabled", self.pet_enabled_var.get())))
-        self.pet_size_var.set(float(settings.get("pet_size", self.pet_size_var.get())))
-        self.pet_x_var.set(float(settings.get("pet_offset_x", self.pet_x_var.get())))
-        self.pet_y_var.set(float(settings.get("pet_offset_y", self.pet_y_var.get())))
-        self.pet_reaction_var.set(settings.get("pet_reaction", self.pet_reaction_var.get()))
-        self.pet_strength_var.set(float(settings.get("pet_reaction_strength", self.pet_strength_var.get())))
-        self.pet_layer_var.set(settings.get("pet_layer", self.pet_layer_var.get()))
-        self.pet_opacity_var.set(float(settings.get("pet_opacity", self.pet_opacity_var.get())))
-        self.pet_mirror_var.set(bool(settings.get("pet_mirror", self.pet_mirror_var.get())))
-        self.mouth_hold_var.set(int(settings.get("mouth_hold_ticks", self.mouth_hold_var.get())))
-        self.profile_var.set(pack.get("name", "Imported"))
-        self._save_settings()
-        self._save_image_sets()
-        self._save_profile()
-        self._set_status("Avatarpack importado")
-
-    def _current_image_sets(self) -> dict:
-        return {
-            "idle": self.idle_images,
-            "talk": self.speaking_images,
-            "talk_low": self.speaking_low_images,
-            "talk_mid": self.speaking_mid_images,
-            "talk_high": self.speaking_high_images,
-            "blink": self.blink_images,
-            "pet": self.pet_images,
-            "pet_talk": self.pet_speaking_images,
-            "pet_loud": self.pet_loud_images,
-        }
-
-    def _images_from_folder(self, folder: Path) -> list[str]:
-        if not folder.is_dir():
-            return []
-        allowed = {".png", ".gif"}
-        return [str(path) for path in sorted(folder.iterdir()) if path.suffix.lower() in allowed and path.is_file()]
-
-    def _clear_images(self) -> None:
-        self.idle_images = []
-        self.speaking_images = []
-        self.speaking_low_images = []
-        self.speaking_mid_images = []
-        self.speaking_high_images = []
-        self.blink_images = []
-        self._save_image_sets()
-
-    def _choose_pet_images(self) -> None:
-        paths = self._pick_images("Escolha GIF ou PNG do pet")
-        if not paths:
-            return
-        self.pet_images = paths
-        self.pet_enabled_var.set(True)
-        self._save_settings()
-        self._save_image_sets()
-
-    def _choose_pet_state_images(self) -> None:
-        speaking = self._pick_images("Escolha pet falando")
-        if speaking:
-            self.pet_speaking_images = speaking
-        loud = self._pick_images("Escolha pet volume alto")
-        if loud:
-            self.pet_loud_images = loud
-        self.pet_enabled_var.set(True)
-        self._save_settings()
-        self._save_image_sets()
-
-    def _clear_pet_images(self) -> None:
-        self.pet_images = []
-        self.pet_speaking_images = []
-        self.pet_loud_images = []
-        self._save_image_sets()
-
-    def _all_asset_paths(self) -> list[str]:
-        return [
-            *self.idle_images,
-            *self.speaking_images,
-            *self.speaking_low_images,
-            *self.speaking_mid_images,
-            *self.speaking_high_images,
-            *self.blink_images,
-            *self.pet_images,
-            *self.pet_speaking_images,
-            *self.pet_loud_images,
-        ]
-
-    def _validate_assets(self) -> None:
-        paths = self._all_asset_paths()
-        if not paths:
-            messagebox.showinfo("Validar assets", "Nenhum asset carregado ainda.")
-            return
-
-        missing = [path for path in paths if not Path(path).is_file()]
-        heavy: list[str] = []
-        oversized: list[str] = []
-        for path in paths:
-            file_path = Path(path)
-            if not file_path.is_file():
-                continue
-            try:
-                if file_path.stat().st_size > 8 * 1024 * 1024:
-                    heavy.append(file_path.name)
-            except OSError:
-                continue
-            if file_path.suffix.lower() != ".png":
-                continue
-            try:
-                from PIL import Image
-
-                with Image.open(file_path) as image:
-                    if max(image.size) > 2000:
-                        oversized.append(f"{file_path.name} ({image.size[0]}x{image.size[1]})")
-            except Exception:
-                continue
-
-        if not self.idle_images:
-            missing.append("Estado idle sem imagem")
-        if not (self.speaking_images or self.speaking_low_images or self.speaking_mid_images or self.speaking_high_images):
-            missing.append("Estado de fala sem imagem")
-
-        issues = []
-        if missing:
-            issues.append("Problemas:\n" + "\n".join(f"- {Path(item).name}" for item in missing[:8]))
-        if heavy:
-            issues.append("Arquivos pesados:\n" + "\n".join(f"- {item}" for item in heavy[:8]))
-        if oversized:
-            issues.append("PNG muito grande:\n" + "\n".join(f"- {item}" for item in oversized[:8]))
-
-        if issues:
-            messagebox.showwarning("Validar assets", "\n\n".join(issues))
-            self._set_status("Assets precisam de atencao", 2600)
-            return
-
-        messagebox.showinfo("Validar assets", "Assets prontos para live. Nenhum problema encontrado.")
-        self._set_status("Assets validados", 2200)
-
-    def _pick_images(self, title: str) -> list[str]:
-        return list(
-            filedialog.askopenfilenames(
-                title=title,
-                filetypes=(
-                    ("Imagens PNG/GIF", "*.png *.gif"),
-                    ("PNG", "*.png"),
-                    ("GIF", "*.gif"),
-                    ("Todos os arquivos", "*.*"),
-                ),
-            )
-        )
-
-    def _save_image_sets(self) -> None:
-        self.settings.idle_images = self.idle_images
-        self.settings.speaking_images = self.speaking_images
-        self.settings.speaking_low_images = self.speaking_low_images
-        self.settings.speaking_mid_images = self.speaking_mid_images
-        self.settings.speaking_high_images = self.speaking_high_images
-        self.settings.blink_images = self.blink_images
-        self.settings.pet_images = self.pet_images
-        self.settings.pet_speaking_images = self.pet_speaking_images
-        self.settings.pet_loud_images = self.pet_loud_images
-        self.avatar_canvas.set_image_sets(
-            self.idle_images,
-            self.speaking_images,
-            self.speaking_low_images,
-            self.speaking_mid_images,
-            self.speaking_high_images,
-            self.blink_images,
-        )
-        self.avatar_canvas.set_pet_images(self.pet_images, self.pet_speaking_images, self.pet_loud_images)
-        self.avatar_canvas.set_transform(
-            self.settings.avatar_scale,
-            self.settings.avatar_offset_x,
-            self.settings.avatar_offset_y,
-            self.settings.avatar_rotation,
-        )
-        if self.obs_window and self.obs_window.winfo_exists():
-            self.obs_window.set_image_sets(
-                self.idle_images,
-                self.speaking_images,
-                self.speaking_low_images,
-                self.speaking_mid_images,
-                self.speaking_high_images,
-                self.blink_images,
-            )
-            self.obs_window.set_pet_images(self.pet_images, self.pet_speaking_images, self.pet_loud_images)
-        self.avatar_label.configure(text="Assets carregados" if self.settings.streamer_safe else self._image_summary())
-        self.settings.save()
-
-    def _image_summary(self) -> str:
-        level_count = len(self.speaking_low_images) + len(self.speaking_mid_images) + len(self.speaking_high_images)
-        pet_count = len(self.pet_images) + len(self.pet_speaking_images) + len(self.pet_loud_images)
-        return f"Idle: {len(self.idle_images)} | Fala: {len(self.speaking_images)} | Niveis: {level_count} | Piscar: {len(self.blink_images)} | Pet: {pet_count}"
-
-    def _current_profile_data(self) -> dict:
-        return {
-            "idle_images": list(self.idle_images),
-            "speaking_images": list(self.speaking_images),
-            "speaking_low_images": list(self.speaking_low_images),
-            "speaking_mid_images": list(self.speaking_mid_images),
-            "speaking_high_images": list(self.speaking_high_images),
-            "blink_images": list(self.blink_images),
-            "pet_images": list(self.pet_images),
-            "pet_speaking_images": list(self.pet_speaking_images),
-            "pet_loud_images": list(self.pet_loud_images),
-            "sensitivity": float(self.sensitivity_var.get()),
-            "smoothing": float(self.smoothing_var.get()),
-            "animation_fps": int(float(self.animation_fps_var.get())),
-            "avatar_scale": float(self.avatar_scale_var.get()),
-            "avatar_offset_x": float(self.avatar_x_var.get()),
-            "avatar_offset_y": float(self.avatar_y_var.get()),
-            "avatar_rotation": float(self.avatar_rotation_var.get()),
-            "pet_enabled": self.pet_enabled_var.get(),
-            "pet_size": float(self.pet_size_var.get()),
-            "pet_offset_x": float(self.pet_x_var.get()),
-            "pet_offset_y": float(self.pet_y_var.get()),
-            "pet_reaction": self.pet_reaction_var.get(),
-            "pet_reaction_strength": float(self.pet_strength_var.get()),
-            "pet_layer": self.pet_layer_var.get(),
-            "pet_opacity": float(self.pet_opacity_var.get()),
-            "pet_mirror": self.pet_mirror_var.get(),
-            "mouth_hold_ticks": int(float(self.mouth_hold_var.get())),
-            "obs_background": self.obs_background_var.get(),
-            "obs_resolution": self.obs_resolution_var.get(),
-            "expressions": self.settings.expressions or {},
-        }
-
-    def _save_profile(self) -> None:
-        name = self._clean_profile_name(self.profile_var.get())
-        self.profile_var.set(name)
-        create_settings_backup("antes_salvar_perfil")
-        profiles = self.settings.profiles or {}
-        profiles[name] = self._current_profile_data()
-        self.settings.profiles = profiles
-        self.settings.active_profile = name
-        self._refresh_profile_select()
-        self.settings.save()
-        self._set_status(f"Perfil salvo: {name}", 2600)
-
-    def _save_expression(self) -> None:
-        name = self.expression_var.get() or "Default"
-        expressions = self.settings.expressions or {}
-        expressions[name] = self._current_image_sets()
-        self.settings.expressions = expressions
-        self.settings.active_expression = name
-        self.expression_select.configure(values=self._expression_names())
-        self.settings.save()
-        self._set_status(f"Expressao salva: {name}", 2200)
-
-    def _new_expression(self) -> None:
-        name = simpledialog.askstring("Nova expressao", "Nome da expressao:")
-        if not name:
-            return
-        self.expression_var.set(name)
-        self._save_expression()
-
-    def _load_expression_by_index(self, index: int) -> None:
-        names = self._expression_names()
-        if 0 <= index - 1 < len(names):
-            self._load_expression(names[index - 1])
-
-    def _load_expression(self, name: str) -> None:
-        expression = (self.settings.expressions or {}).get(name)
-        if not expression:
-            return
-        self.idle_images = list(expression.get("idle") or [])
-        self.speaking_images = list(expression.get("talk") or [])
-        self.speaking_low_images = list(expression.get("talk_low") or [])
-        self.speaking_mid_images = list(expression.get("talk_mid") or [])
-        self.speaking_high_images = list(expression.get("talk_high") or [])
-        self.blink_images = self._profile_list(expression, "blink")
-        self.pet_images = self._profile_list(expression, "pet")
-        self.pet_speaking_images = self._profile_list(expression, "pet_talk")
-        self.pet_loud_images = self._profile_list(expression, "pet_loud")
-        self.settings.active_expression = name
-        self.expression_var.set(name)
-        self._save_image_sets()
-        self._set_status(f"Expressao: {name}", 2200)
-
-    def _new_profile(self) -> None:
-        raw_name = simpledialog.askstring("Novo perfil", "Nome do perfil:")
-        if not raw_name or not raw_name.strip():
-            return
-        name = self._clean_profile_name(raw_name)
-        self.profile_var.set(name)
-        self._save_profile()
-
-    def _duplicate_profile(self) -> None:
-        current = self._clean_profile_name(self.profile_var.get())
-        raw_name = simpledialog.askstring("Duplicar perfil", "Nome do novo perfil:", initialvalue=f"{current} copia")
-        if not raw_name or not raw_name.strip():
-            return
-        new_name = self._clean_profile_name(raw_name)
-        create_settings_backup("antes_duplicar_perfil")
-        profiles = self.settings.profiles or {}
-        profiles[new_name] = self._current_profile_data()
-        self.settings.profiles = profiles
-        self.settings.active_profile = new_name
-        self.profile_var.set(new_name)
-        self._refresh_profile_select()
-        self.settings.save()
-        self._set_status(f"Perfil duplicado: {new_name}", 2600)
-
-    def _rename_profile(self) -> None:
-        old_name = self._clean_profile_name(self.profile_var.get())
-        profiles = self.settings.profiles or {}
-        if old_name not in profiles:
-            messagebox.showinfo("Renomear perfil", "Salve o perfil atual antes de renomear.")
-            return
-
-        raw_name = simpledialog.askstring("Renomear perfil", "Novo nome do perfil:", initialvalue=old_name)
-        if not raw_name or not raw_name.strip():
-            return
-        new_name = self._clean_profile_name(raw_name)
-        if new_name == old_name:
-            return
-        if new_name in profiles and not messagebox.askyesno("Renomear perfil", f"Ja existe um perfil chamado {new_name}. Substituir?"):
-            return
-
-        create_settings_backup("antes_renomear_perfil")
-        profiles[new_name] = profiles.pop(old_name)
-        self.settings.profiles = profiles
-        self.settings.active_profile = new_name
-        self.profile_var.set(new_name)
-        self._refresh_profile_select()
-        self.settings.save()
-        self._set_status(f"Perfil renomeado: {old_name} -> {new_name}", 3000)
-
-    def _delete_profile(self) -> None:
-        name = self._clean_profile_name(self.profile_var.get())
-        profiles = self.settings.profiles or {}
-        if name not in profiles:
-            messagebox.showinfo("Excluir perfil", "Este perfil ainda nao esta salvo, entao nao ha o que excluir.")
-            return
-        if not messagebox.askyesno("Excluir perfil", f"Excluir o perfil {name}? Um backup sera criado antes."):
-            return
-
-        create_settings_backup("antes_excluir_perfil")
-        profiles.pop(name, None)
-        self.settings.profiles = profiles
-        fallback = next(iter(sorted(profiles)), "Default")
-        self.settings.active_profile = fallback
-        self.profile_var.set(fallback)
-        self._refresh_profile_select()
-        self.settings.save()
-        if fallback in profiles:
-            self._load_profile(fallback)
-        else:
-            self._save_settings()
-        self._set_status(f"Perfil excluido: {name}", 3000)
-
-    def _load_profile(self, name: str) -> None:
-        name = self._clean_profile_name(name)
-        profile = (self.settings.profiles or {}).get(name)
-        if not profile:
-            return
-        self.profile_var.set(name)
-        self.idle_images = self._profile_list(profile, "idle_images")
-        self.speaking_images = self._profile_list(profile, "speaking_images")
-        self.speaking_low_images = self._profile_list(profile, "speaking_low_images")
-        self.speaking_mid_images = self._profile_list(profile, "speaking_mid_images")
-        self.speaking_high_images = self._profile_list(profile, "speaking_high_images")
-        self.blink_images = self._profile_list(profile, "blink_images")
-        self.pet_images = self._profile_list(profile, "pet_images")
-        self.pet_speaking_images = self._profile_list(profile, "pet_speaking_images")
-        self.pet_loud_images = self._profile_list(profile, "pet_loud_images")
-        self.sensitivity_var.set(float(profile.get("sensitivity", self.settings.sensitivity)))
-        self.smoothing_var.set(float(profile.get("smoothing", self.settings.smoothing)))
-        self.animation_fps_var.set(int(profile.get("animation_fps", self.settings.animation_fps)))
-        self.avatar_scale_var.set(float(profile.get("avatar_scale", self.settings.avatar_scale)))
-        self.avatar_x_var.set(float(profile.get("avatar_offset_x", self.settings.avatar_offset_x)))
-        self.avatar_y_var.set(float(profile.get("avatar_offset_y", self.settings.avatar_offset_y)))
-        self.avatar_rotation_var.set(float(profile.get("avatar_rotation", self.settings.avatar_rotation)))
-        self.pet_enabled_var.set(bool(profile.get("pet_enabled", self.settings.pet_enabled)))
-        self.pet_size_var.set(float(profile.get("pet_size", self.settings.pet_size)))
-        self.pet_x_var.set(float(profile.get("pet_offset_x", self.settings.pet_offset_x)))
-        self.pet_y_var.set(float(profile.get("pet_offset_y", self.settings.pet_offset_y)))
-        self.pet_reaction_var.set(profile.get("pet_reaction", self.settings.pet_reaction))
-        self.pet_strength_var.set(float(profile.get("pet_reaction_strength", self.settings.pet_reaction_strength)))
-        self.pet_layer_var.set(profile.get("pet_layer", self.settings.pet_layer))
-        self.pet_opacity_var.set(float(profile.get("pet_opacity", self.settings.pet_opacity)))
-        self.pet_mirror_var.set(bool(profile.get("pet_mirror", self.settings.pet_mirror)))
-        self.mouth_hold_var.set(int(profile.get("mouth_hold_ticks", self.settings.mouth_hold_ticks)))
-        self.obs_background_var.set(profile.get("obs_background", self.settings.obs_background))
-        self.obs_resolution_var.set(profile.get("obs_resolution", self.settings.obs_resolution))
-        self.settings.active_profile = name
-        self._save_settings()
-        self._save_obs_settings()
-        self._save_image_sets()
-        self._set_status(f"Perfil carregado: {name}", 2600)
-
-    def _restore_latest_backup(self) -> None:
-        if not messagebox.askyesno("Restaurar backup", "Restaurar o ultimo backup local de configuracoes e perfis?"):
-            return
-        try:
-            restored = restore_settings_backup()
-        except Exception as exc:
-            messagebox.showerror("Backup", str(exc))
-            return
-        self.settings = Settings.load()
-        self._apply_settings_to_ui()
-        self._set_status(f"Backup restaurado: {restored.name}", 3200)
 
     def _apply_settings_to_ui(self) -> None:
         self.colors = DARK if self.settings.dark_mode else LIGHT
@@ -1500,12 +700,23 @@ class AvatarCamApp(tk.Tk):
         self.detector.sensitivity = self.settings.sensitivity
         self.detector.smoothing = self.settings.smoothing
         self.detector.mouth_hold_ticks = self.settings.mouth_hold_ticks
+        self.advanced_var.set(self.settings.advanced_mode)
+        self.speech_mode_var.set(self.settings.speech_mode)
+        self.expression3d_var.set(self.settings.expression3d)
+        self.fps3d_var.set(self.settings.fps3d)
+        self.rotate3d_var.set(self.settings.auto_rotate3d)
+        self.microphone.speech_mode = self.settings.speech_mode
+        self.model_label.configure(text=self._model_description())
+        self._set_simple_mode(save=False)
         self._apply_theme()
         self._save_image_sets()
         self._save_obs_settings()
 
     def _trigger_test(self) -> None:
-        self.test_ticks = 90
+        if self.calibration_deadline and self.calibration_deadline.active:
+            self._set_status('Aguarde a calibracao antes do teste.', 2000)
+            return
+        self.test_deadline = Deadline(3.0)
 
     def _start_calibration(self) -> None:
         if not self.microphone.is_running:
@@ -1516,7 +727,8 @@ class AvatarCamApp(tk.Tk):
                 messagebox.showerror("Calibracao", f"Ative o microfone primeiro:\n{exc}")
                 return
         self.calibration_samples = []
-        self.calibration_ticks = 180
+        self.test_deadline = None
+        self.calibration_deadline = Deadline(3.0)
         self._set_status("Calibrando ruido por 3 segundos...", 3200)
 
     def _toggle_theme(self) -> None:
@@ -1669,6 +881,10 @@ class AvatarCamApp(tk.Tk):
         self._save_settings_file()
 
     def _hide_controls(self) -> None:
+        if not getattr(self, 'tray_available', False):
+            if messagebox.askyesno('Sair', 'A bandeja esta indisponivel. Deseja encerrar o app?'):
+                self.destroy()
+            return
         if not self.obs_window or not self.obs_window.winfo_exists() or self.obs_window.state() == "withdrawn":
             self._toggle_obs_window()
         self._send_obs_to_back(save=True)
@@ -1717,12 +933,22 @@ class AvatarCamApp(tk.Tk):
             messagebox.showerror("Backups", str(exc))
 
     def _reset_privacy(self) -> None:
+        if self.jobs:
+            self._set_status('Aguarde a importacao antes de apagar dados.', 3000)
+            return
         if not messagebox.askyesno("Apagar dados locais", "Apagar configuracoes, perfis, caminhos de imagens e logs locais?"):
             return
+        self._closing = True
+        if getattr(self, '_tick_id', None): self.after_cancel(self._tick_id)
+        if self.pending_settings_save:
+            self.after_cancel(self.pending_settings_save)
+            self.pending_settings_save = None
+        if self.viewer_server: self.viewer_server.close()
+        self.executor.shutdown(wait=False, cancel_futures=True)
         self.microphone.stop()
         self.hotkeys.close()
         self.tray.stop()
-        self.log.info("Apagando dados locais")
+        self.log.info('Apagando dados locais')
         close_logger()
         self._close_explorer_windows_for(APP_DIR)
         try:
@@ -1730,6 +956,7 @@ class AvatarCamApp(tk.Tk):
                 self._remove_app_dir()
         except Exception as exc:
             messagebox.showerror("Privacidade", f"Nao foi possivel apagar tudo:\n{exc}")
+            super().destroy()
             return
         messagebox.showinfo("Privacidade", "Dados locais apagados. O app sera fechado.")
         super().destroy()
@@ -1769,73 +996,81 @@ class AvatarCamApp(tk.Tk):
             pass
 
     def _tick(self) -> None:
-        if self.test_ticks > 0:
-            raw_level = 0.32 + math.sin(self.test_ticks / 3) * 0.12
-            self.test_ticks -= 1
-        else:
-            raw_level = self.microphone.read_level()
-
-        state = self.detector.update(raw_level)
-        if self.calibration_ticks > 0:
-            self.calibration_samples.append(raw_level)
-            self.calibration_ticks -= 1
-            if self.calibration_ticks == 0:
-                base = max(self.calibration_samples or [0.02])
-                calibrated = max(0.05, min(0.45, base * 2.7 + 0.035))
-                self.sensitivity_var.set(calibrated)
+        if self._closing:
+            return
+        self._poll_jobs()
+        now = time.monotonic()
+        testing = bool(self.test_deadline and self.test_deadline.active)
+        raw_level = (.32 + math.sin(now * 10) * .12) if testing else self.microphone.read_level()
+        voice_allowed = testing or self.microphone.voice_allowed
+        state = self.detector.update(raw_level, voice_allowed)
+        if self.calibration_deadline:
+            if self.calibration_deadline.active:
+                self.calibration_samples.append(raw_level)
+                self._set_status(f'Calibrando: fique em silencio por {self.calibration_deadline.remaining:.1f} s', 100)
+            else:
+                floor, sensitivity = calibrate_noise(self.calibration_samples)
+                self.settings.noise_floor = floor
+                self.sensitivity_var.set(sensitivity)
                 self._save_settings()
-                self._set_status(f"Sensibilidade calibrada: {int(calibrated * 100)}%", 2600)
-
-        speaking = state.speaking or self.test_ticks > 0
+                self.calibration_deadline = None
+                self.detector.reset()
+                self._set_status(f'Calibracao concluida: sensibilidade {sensitivity:.0%}', 3000)
+        speaking = state.speaking or testing
         preset = self.settings.performance_preset
-        if not self.settings.performance_mode and self.state() != "withdrawn":
-            self.avatar_canvas.update_state(speaking, state.level)
-        if self.obs_window and self.obs_window.winfo_exists() and self.obs_window.state() != "withdrawn":
-            if preset != "ultra" or speaking != self.last_speaking or self.ui_tick % 2 == 0:
+        visual_delay = .1 if preset == 'ultra' else .05 if preset == 'performance' else .033
+        if now - self.last_visual_update >= visual_delay:
+            self.last_visual_update = now
+            if not self.settings.performance_mode and self.state() == 'normal':
+                self.avatar_canvas.update_state(speaking, state.level)
+            if self.obs_window and self.obs_window.winfo_exists() and self.obs_window.state() == 'normal':
                 self.obs_window.update_state(speaking, state.level)
-
+            self.render_frames += 1
+        self._publish3d(state.level, speaking)
         self.ui_tick += 1
-
-        status_mod = 45 if preset in ("performance", "ultra") else 15
-        if self._status_is_held():
-            pass
-        elif self.microphone.is_running and (speaking != self.last_speaking or self.ui_tick % status_mod == 0):
-            if self.calibration_ticks <= 0:
-                self.status_label.configure(text="Voz detectada" if speaking else f"Ouvindo microfone | FPS {self.render_fps}")
-            self.last_speaking = speaking
-        elif self.test_ticks > 0:
-            self.status_label.configure(text="Teste de fala ativo")
-        else:
-            self.status_label.configure(text="Microfone desligado")
-
-        self.render_frames += 1
-        now = self._clock_ms()
-        if self.last_fps_time == 0:
+        if self.ui_tick % 5 == 0:
+            self.audio_meter['value'] = state.level
+            self.audio_hint.configure(text=f'Volume {state.level:.0%} | limiar {self.settings.sensitivity:.0%} | ' + ('Voz detectada' if speaking else 'Silencio'))
+        if self.microphone._stream is not None and (not self.microphone.is_running or now - self.microphone.last_audio_time > 3):
+            try:
+                self.microphone.stop()
+            except Exception:
+                self.log.exception('Falha ao liberar microfone desconectado')
+            self.mic_button.configure(text='Reconectar microfone')
+            self.detector.reset()
+            self._set_status('Microfone desconectado. Atualize a lista e reconecte.', 6000)
+        if not self._status_is_held() and self.ui_tick % 10 == 0:
+            text = 'Teste de fala ativo' if testing else ('Voz detectada' if speaking else 'Ouvindo microfone') if self.microphone.is_running else 'Microfone desligado'
+            self.status_label.configure(text=text)
+        self.last_speaking = speaking
+        if not self.last_fps_time:
             self.last_fps_time = now
-        elif now - self.last_fps_time >= 1000:
-            self.render_fps = self.render_frames
+        elif now - self.last_fps_time >= 1:
+            self.render_fps = round(self.render_frames / (now - self.last_fps_time))
             self.render_frames = 0
             self.last_fps_time = now
-
-        delay = 100 if preset == "ultra" else 50 if preset == "performance" else 33
-        idle_background = (
-            not self.microphone.is_running
-            and self.test_ticks <= 0
-            and self.calibration_ticks <= 0
-            and (not self.obs_window or not self.obs_window.winfo_exists() or self.obs_window.state() == "withdrawn")
-        )
-        if idle_background:
-            delay = max(delay, 180)
-        self.after(delay, self._tick)
+        # Captura e deteccao de fala continuam rapidas em qualquer preset visual.
+        idle = not self.microphone.is_running and not testing and not self.calibration_deadline and not self.jobs and not self.viewer_server and self.state() == 'withdrawn' and (not self.obs_window or self.obs_window.state() == 'withdrawn')
+        self._tick_id = self.after(100 if idle else 20, self._tick)
 
     def destroy(self) -> None:
-        self.log.info("AvatarCam encerrado")
+        self._closing = True
+        if getattr(self, '_tick_id', None):
+            self.after_cancel(self._tick_id)
+        if self.viewer_server:
+            self.viewer_server.close()
+        self.executor.shutdown(wait=False, cancel_futures=True)
+        self.log.info('2DCam Studio encerrado')
         if self.pending_settings_save is not None:
             self.after_cancel(self.pending_settings_save)
             self.pending_settings_save = None
             self.settings.save()
         self.tray.stop()
         self.hotkeys.close()
-        self.microphone.stop()
-        close_logger()
-        super().destroy()
+        try:
+            self.microphone.stop()
+        except Exception as exc:
+            self.log.warning('Microfone ja desconectado durante encerramento: %s', exc)
+        finally:
+            close_logger()
+            super().destroy()

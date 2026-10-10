@@ -22,15 +22,20 @@ class TrayController:
         draw.rectangle((24, 20, 40, 44), fill="#ffffff")
 
         menu = pystray.Menu(
-            pystray.MenuItem("Abrir controles", lambda _icon, _item: self.app.after(0, self.app.show_controls)),
-            pystray.MenuItem("Mostrar/Ocultar OBS", lambda _icon, _item: self.app.after(0, self.app._toggle_obs_window)),
-            pystray.MenuItem("Microfone on/off", lambda _icon, _item: self.app.after(0, self.app._toggle_microphone)),
-            pystray.MenuItem("Modo live", lambda _icon, _item: self.app.after(0, self.app._enable_live_mode)),
-            pystray.MenuItem("Pet on/off", lambda _icon, _item: self.app.after(0, self.app._toggle_pet)),
-            pystray.MenuItem("Sair", lambda _icon, _item: self.app.after(0, self.app.destroy)),
+            pystray.MenuItem("Abrir controles", lambda _icon, _item: self.app.enqueue_ui(self.app.show_controls)),
+            pystray.MenuItem("Mostrar/Ocultar OBS", lambda _icon, _item: self.app.enqueue_ui(self.app._toggle_obs_window)),
+            pystray.MenuItem("Microfone on/off", lambda _icon, _item: self.app.enqueue_ui(self.app._toggle_microphone)),
+            pystray.MenuItem("Modo live", lambda _icon, _item: self.app.enqueue_ui(self.app._enable_live_mode)),
+            pystray.MenuItem("Pet on/off", lambda _icon, _item: self.app.enqueue_ui(self.app._toggle_pet)),
+            pystray.MenuItem("Sair", lambda _icon, _item: self.app.enqueue_ui(self.app.destroy)),
         )
         self.icon = pystray.Icon("AvatarCam2D", image, "AvatarCam 2D", menu)
-        self.icon.run_detached()
+        try:
+            self.icon.run_detached()
+        except Exception as exc:
+            self.app.log.warning('Bandeja nao iniciada: %s', exc)
+            self.icon = None
+            return False
         return True
 
     def stop(self) -> None:

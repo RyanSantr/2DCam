@@ -1,323 +1,91 @@
-# AvatarCam 2D Desktop
+# 2DCam Studio 3.2
 
-Aplicacao desktop em Python onde sua camera e substituida por um avatar 2D animado. O app captura o microfone, detecta fala por volume em tempo real e alterna automaticamente entre animacao idle e animacao falando.
+[![Testes Windows](https://github.com/RyanSantr/2DCam/actions/workflows/tests.yml/badge.svg)](https://github.com/RyanSantr/2DCam/actions/workflows/tests.yml)
 
-Autor: ** RyanSantr**
+Aplicativo Windows para usar avatares 2D e 3D na própria janela, com voz e rastreamento facial local.
 
-## O Que Vem Pronto
+## Abrir
 
-- Janela desktop nativa, sem navegador e sem servidor web.
-- Avatar 2D carregado a partir de imagens escolhidas pelo usuario.
-- Captura de microfone com `sounddevice`.
-- Deteccao de fala por volume RMS com baixa latencia.
-- Troca automatica entre idle e fala.
-- Botao para ativar/desativar microfone.
-- Botoes para escolher imagens idle e imagens falando.
-- Sensibilidade e suavizacao ajustaveis.
-- FPS da animacao ajustavel.
-- Perfis de avatar para lives diferentes.
-- Gerenciamento de perfis: salvar, criar, duplicar, renomear, excluir e restaurar backup.
-- Backup automatico antes de alteracoes importantes em perfis.
-- Importacao automatica por pasta.
-- Importacao copia os assets para a biblioteca local do app.
-- Exportar/importar `.avatarpack`.
-- Validador de assets para detectar arquivos ausentes, pesados ou grandes demais.
-- Atalhos configuraveis pelo usuario, incluindo teclas de funcao, `Ctrl` e `Alt`.
-- Cenas salvas com posicao, escala, rotacao, fundo OBS, resolucao e composicao do pet.
-- Atalhos de cena para alternar layout da live em tempo real.
-- Sistema de expressoes para trocar conjuntos de assets rapidamente.
-- Estados de fala baixa, media e alta por volume.
-- Calibracao automatica do ruido ambiente.
-- Hotkeys globais configuraveis.
-- Icone de bandeja do Windows com menu rapido.
-- Editor de escala, posicao e rotacao do avatar.
-- Modo performance para pausar o preview do painel.
-- Presets de performance: quality, balanced, performance e ultra.
-- Seletor de dispositivo de microfone.
-- Cache de imagens otimizadas ao importar avatar.
-- Movimento vertical automatico liga/desliga.
-- Sombra simples do avatar liga/desliga.
-- Pet customizado por GIF, PNG unico ou sequencia de imagens.
-- Pet com estados separados para idle, falando e volume alto.
-- Pet com camada frente/atras, opacidade e espelhamento.
-- Reacoes configuraveis do pet por volume de voz: pulo, tremida, flutuacao e velocidade.
-- Piscar automatico opcional do avatar por imagens dedicadas.
-- Controle para segurar a boca aberta por mais tempo apos a fala.
-- Modo live dedicado com preset ultra, OBS atras e controles ocultos.
-- Opcao de iniciar minimizado na bandeja.
-- Logs locais rotativos para diagnostico.
-- Botao para apagar configuracoes, perfis, caminhos de imagens e logs.
-- Reset local corrige bloqueio de arquivos de log no Windows antes de apagar dados.
-- Modo escuro/claro.
-- Fundo personalizavel.
-- Botao de teste de fala.
-- Janela limpa para OBS em 1280x720.
-- Fundo chroma key para remover no OBS.
-- Opcao para manter a janela OBS sempre no topo.
-- Janela OBS com resolucoes 16:9 e vertical.
-- Opcao de janela OBS sem borda.
-- Modo live para esconder controles e deixar so a janela de captura.
-- Botao para enviar a janela OBS para tras das outras janelas.
-- Processamento local: sem upload de audio, imagem ou configuracao.
-- Estrutura separada por modulos.
-- Script para gerar `.exe` no Windows.
+Baixe o ZIP Windows em [Releases](https://github.com/RyanSantr/2DCam/releases/latest). O botão **Code → Download ZIP** contém o código-fonte; o aplicativo pronto está em Releases.
 
-## Estrutura
+1. Extraia **todo o ZIP**.
+2. Abra **2DCamStudio.exe**.
+3. Mantenha **_internal** ao lado do executável.
 
-```text
-.
-|-- app.py
-|-- requirements.txt
-|-- README.md
-|-- avatarcam
-|   |-- main.py
-|   |-- audio
-|   |   |-- microphone.py
-|   |-- core
-|   |   |-- app_log.py
-|   |   |-- avatar_pack.py
-|   |   |-- hotkeys.py
-|   |   |-- profile_backup.py
-|   |   |-- settings.py
-|   |   |-- speech_detector.py
-|   |-- ui
-|       |-- app_window.py
-|       |-- avatar_canvas.py
-|       |-- obs_window.py
-|       |-- setup_wizard.py
-|       |-- tray.py
-|       |-- theme.py
-|-- scripts
-    |-- run.bat
-    |-- build_exe.bat
-```
+Não precisa instalar Python nem abrir navegador. Câmera e microfone começam desligados.
 
-## Rodar No VS Code
+Abrir novamente traz os controles da instância existente para a frente. Cada biblioteca de configurações usa uma única instância, evitando carregar o avatar duas vezes.
 
-Instale Python 3.11 ou superior. Depois, no terminal dentro desta pasta:
+## Controles
 
-```bash
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-python app.py
-```
+- **Importar avatar:** PNG/GIF, VRM/GLB ou .avatarpack. Também aceita arrastar um arquivo.
+- **Avatar:** voz, câmera e expressões.
+- **Biblioteca:** avatares recentes, poses 2D, pacotes e perfis.
+- **Câmera:** dispositivo, calibração e resposta dos movimentos. A prévia só ocupa memória enquanto visível.
+- **Configurações:** desempenho, tamanho/fundo da saída e diagnóstico.
+- **Pausar:** desliga câmera e microfone e congela a animação. Retomar reativa os dispositivos que estavam ligados.
 
-Ou use:
+Para começar: importe o personagem, ative o microfone ou **Ligar rastreamento**, olhe para a câmera e **Calibrar posição neutra**. Ajuste o enquadramento com o mouse. Use a roda para aproximar; no 3D, o botão direito move a câmera. Salve a posição antes de abrir a saída.
 
-```bash
-scripts\run.bat
-```
+## Desempenho
 
-## Gerar Executavel `.exe`
+| Modo | Limite de renderização | Rastreamento | Resolução solicitada à câmera | Imagens 2D + pixmaps |
+|---|---:|---:|---|---|
+| Econômico | 24 FPS | 12 leituras/s | 320 × 240 | 32 + 16 MiB |
+| Equilibrado | 30 FPS | 20 leituras/s | 480 × 360 | 64 + 24 MiB |
+| Qualidade | 60 FPS | 30 leituras/s | 640 × 480 | 96 + 32 MiB |
 
-Com o ambiente configurado, rode:
+São limites e metas, não uma promessa de FPS. GPU, iluminação, câmera e complexidade do modelo afetam o resultado. O orçamento das imagens não limita toda a memória do aplicativo; modelos 3D, detector facial e componentes nativos usam memória adicional.
 
-```bash
-scripts\build_exe.bat
-```
+Com o OBS, comece por **Econômico**, saída **960 × 540** ou **640 × 360**, câmera oculta e **Ocultar controles ao abrir saída**. A memória privada residente dos processos aparece no rodapé; não inclui memória compartilhada nem VRAM.
 
-O executavel sera gerado em:
+O app carrega apenas um avatar 3D. A saída reutiliza a mesma superfície do editor; por isso a prévia do editor fica substituída por uma mensagem durante a captura. Voltar ao editor devolve o mesmo renderizador. Trocar para 2D destrói a página 3D e libera seu conteúdo. Modelos pesados devem ser reduzidos pelo criador; o app não consegue garantir um teto de RAM para todo VRM/GLB.
 
-```text
-dist\AvatarCam2D.exe
-```
+## Saída para OBS
 
-## Como Usar
+1. Clique **Abrir saída para OBS**.
+2. No OBS, crie **Captura de janela** e selecione **2DCam - Avatar**.
+3. Use **Automático**; se a captura falhar, escolha **Windows 10 (1903 ou superior)**.
+4. Desative **Capturar cursor** e ative **Área do cliente**.
+5. Use o filtro **Chroma Key** para remover o fundo verde ou azul.
 
-1. Abra o app.
-2. Clique em **Ativar microfone**.
-3. Fale no microfone.
-4. O app alterna para as imagens de fala enquanto sua voz e detectada.
-5. Ao parar de falar, ele volta para idle.
-6. Ajuste **Sensibilidade** se ele falar sozinho ou demorar para reagir.
-7. Use **Teste de fala** para testar a animacao sem microfone.
-8. Use **Validar assets** antes da live para conferir se os arquivos ainda existem e estao leves.
+Mantenha a saída aberta e sem minimizar. Os controles do editor podem ficar ocultos. Clique com o botão direito na área vazia da saída para mostrar os controles, pausar ou fechar. Fechar a saída devolve o avatar ao editor. Não é necessário criar uma Fonte de navegador.
 
-## Pasta De Avatar Recomendada
+Tamanhos: 640 × 360, 960 × 540, 1280 × 720 e 1920 × 1080. Fundos: verde, azul ou cinza. **Recarregar prévia 3D** recupera uma renderização interrompida. O app não instala driver de câmera virtual nem oferece alpha transparente diretamente ao OBS.
 
-Voce pode importar uma pasta inteira com este formato:
+A captura foi exercitada no OBS 32.2.2 / Windows 11 com Windows Graphics Capture. Outras versões e dispositivos exigem verificação. Em computadores com duas GPUs, o OBS e o app podem exigir ajustes nas preferências gráficas do Windows.
 
-```text
-meu-avatar/
-|-- idle/
-|   |-- 001.png
-|   |-- 002.png
-|-- talk/
-|   |-- 001.png
-|-- talk_low/
-|   |-- 001.png
-|-- talk_mid/
-|   |-- 001.png
-|-- talk_high/
-|   |-- 001.png
-|-- blink/
-|   |-- 001.png
-|-- pet/
-|   |-- pet.gif
-|-- pet_talk/
-|   |-- pet-talk.gif
-|-- pet_loud/
-    |-- pet-loud.gif
-```
+Referências oficiais: [Captura de janela](https://obsproject.com/kb/window-capture-sources) e [Seleção de GPU](https://obsproject.com/kb/gpu-selection-guide).
 
-Pastas em portugues tambem funcionam para fala:
+## Formatos
 
-```text
-fala/
-fala_baixa/
-fala_media/
-fala_alta/
-```
+- **PNG/GIF:** movimento da imagem e troca de poses de fala, piscar e expressões. Uma imagem plana não ganha uma malha facial articulada. Adicione as poses na Biblioteca.
+- **VRM:** cabeça, olhos, boca e expressões conforme os recursos presentes no modelo; física do cabelo quando disponível.
+- **GLB:** visualização e animação incorporada. Boca e olhos dependem dos morphs; orientação parcial do objeto acompanha a cabeça.
 
-Ao importar uma pasta, o app copia as imagens para:
+VRM/GLB devem ser autocontidos, com recursos incorporados, sem Draco/Meshopt/KTX2. Limite do arquivo: 128 MiB. Imagens são redimensionadas no cache conforme o modo; animações aceitam até 256 frames e devem caber no orçamento de imagens. Não importa Live2D Cubism, FBX ou OBJ.
 
-```text
-%USERPROFILE%\.avatarcam_2d\avatars
-```
+## Biblioteca e privacidade
 
-Assim o avatar continua funcionando mesmo se voce mover ou apagar a pasta original.
+Arquivos importados são copiados para a biblioteca local. Recentes guardam até 12 avatares. Perfis guardam poses, expressões 2D, pet, modelo, enquadramento, ajustes de voz/movimento, desempenho e saída. Carregar um perfil substitui as poses vazias corretamente; um arquivo obrigatório ausente mantém o avatar atual. É possível excluir um perfil sem apagar as imagens. Perfis antigos continuam disponíveis.
 
-Durante a importacao, imagens PNG grandes sao otimizadas para reduzir custo de renderizacao. O arquivo original do usuario nao e alterado.
+Pacotes .avatarpack permitem transportar o personagem; vínculos personalizados de expressão permanecem nas configurações locais. Perfis guardam caminhos locais e não são pacotes portáteis. Dados locais ficam em `%USERPROFILE%\.avatarcam_2d`.
 
-## Usar Suas Proprias Artes
-
-O app nao depende mais de avatar pronto. Voce escolhe arquivos locais para cada estado:
-
-- **Idle:** imagem parada ou sequencia de frames quando voce nao esta falando.
-- **Falando:** imagem de boca aberta ou sequencia de frames quando sua voz e detectada.
-- **Fala baixa/media/alta:** imagens opcionais para variar a boca conforme o volume.
-- **Piscar:** imagens opcionais usadas automaticamente em pequenos intervalos quando o avatar esta idle.
-- **Pet:** arte idle do pet.
-- **Pet fala/alto:** artes opcionais para o pet reagir a fala e volume alto.
-
-Formatos recomendados:
-
-- PNG com transparencia para melhor resultado no OBS.
-- GIF ou varios PNGs para animacao simples.
-- Imagens na mesma proporcao para evitar pulos visuais.
-
-Tudo fica local no seu PC. O app nao envia audio nem imagens para internet.
+Pastas 2D aceitam idle, talk/fala, blink/piscar e pet. A câmera é processada em memória; o app não envia nem grava seus frames. O diagnóstico não inclui imagens da câmera. Configurações da versão anterior são preservadas.
 
 ## Atalhos
 
-Abra a aba **Atalhos** para escolher quais teclas cada acao usa. Por padrao:
+| Atalho | Ação |
+|---|---|
+| Ctrl+O | Importar |
+| Ctrl+M | Microfone |
+| Ctrl+T | Câmera |
+| Ctrl+P | Pausar / retomar |
+| Ctrl+Shift+O | Saída |
+| Espaço | Testar fala |
 
-- `F8`: ativar/desativar microfone.
-- `F9`: teste de fala.
-- `F10`: mostrar controles.
-- `F11`: abrir/ocultar janela OBS.
-- `F12`: mostrar/ocultar pet.
-- `Ctrl+F11`: ativar modo live.
-- `Ctrl+1` ate `Ctrl+4`: aplicar cenas salvas.
+## Código e créditos
 
-Quando possivel no Windows, o app registra esses atalhos como globais. Se o Windows bloquear, eles continuam funcionando quando a janela do app estiver focada.
+Código principal em avatarcam/desktop e avatarcam/tracking. Com Python 3.12 de 64 bits, execute `scripts/run.bat` para iniciar pelo código ou `scripts/build_exe.bat` para gerar o aplicativo. O resultado é dist/2DCamStudio/; distribua a pasta inteira. O renderizador compilado e os modelos já estão no repositório; Node só é necessário ao alterar o JavaScript. Módulos antigos são mantidos somente para regressão; o executável usa a interface nativa.
 
-Deixe um campo vazio para desativar aquele atalho. Se duas acoes usarem a mesma tecla, a primeira na lista fica com prioridade.
-
-## Cenas
-
-Use a aba **Atalhos** para salvar cenas da live. Cada cena guarda:
-
-- escala, posicao X/Y e rotacao do avatar;
-- FPS, movimento vertical e sombra;
-- fundo, resolucao, borda e topo da janela OBS;
-- pet ligado/desligado, tamanho, posicao, camada, opacidade, espelhamento e reacao.
-
-Ao aplicar uma cena, a janela **OBS Avatar Output** atualiza imediatamente. Isso permite deixar cenas como camera central, avatar no canto, reacao com pet ou layout vertical e trocar tudo por atalho enquanto o OBS captura a mesma janela.
-
-## Avatarpack
-
-Use **Exportar** para gerar um arquivo `.avatarpack` com imagens e configuracoes principais. Use **Importar .avatarpack** para restaurar em outro PC ou compartilhar seu avatar.
-
-## Perfis E Backups
-
-Use a aba **Operacao** para criar, salvar, duplicar, renomear ou excluir perfis. Antes de salvar, duplicar, renomear ou excluir, o app cria um backup local em:
-
-```text
-%USERPROFILE%\.avatarcam_2d\backups
-```
-
-Se algo ficar errado, use **Restaurar backup** no painel de perfil.
-
-## Calibracao
-
-Use **Calibrar ruido ambiente** antes da live. Fique em silencio por 3 segundos. O app mede o ruido do seu quarto, teclado e ventoinhas, depois ajusta a sensibilidade automaticamente.
-
-## Ajuste Visual
-
-Use os controles:
-
-- **Escala avatar** para aumentar ou diminuir a arte.
-- **Posicao X** para mover para esquerda/direita.
-- **Posicao Y** para mover para cima/baixo.
-- **Rotacao avatar** para inclinar a arte sem editar o PNG/GIF.
-- **Modo performance** para pausar o preview no painel principal e renderizar apenas a janela OBS.
-- **Preset performance** para escolher entre qualidade e baixo uso de CPU.
-- **Movimento vertical automatico** para ligar/desligar o sobe e desce do avatar.
-- **Sombra do avatar** para dar leitura melhor no OBS.
-- **Mostrar pet** para ligar/desligar o pet customizado.
-- **Tamanho do pet** para ajustar o espaco dele na cena.
-- **Pet posicao X/Y** para posicionar o pet na cena.
-- **Camada do pet** para colocar na frente ou atras do avatar.
-- **Opacidade pet** e **Espelhar pet** para ajustar composicao.
-- **Forca reacao pet** e **Reacao do pet** para controlar como o GIF/PNG responde quando voce fala.
-- **Escolher GIF/PNG do pet** para usar sua propria arte.
-- **Segurar boca** para reduzir cortes secos quando voce para de falar.
-
-Esses ajustes tambem sao aplicados na janela **OBS Avatar Output**.
-
-## Usar Com OBS
-
-1. Abra o `AvatarCam2D.exe`.
-2. Escolha as imagens idle e falando.
-3. Clique em **Abrir janela OBS**.
-3. No OBS, adicione uma fonte **Window Capture**.
-4. Escolha a janela chamada **OBS Avatar Output**.
-5. Selecione o metodo de captura que funcionar melhor no seu Windows, geralmente **Windows 10 (1903 and up)**.
-6. Para remover o fundo, adicione o filtro **Chroma Key** na fonte.
-7. Use a cor do fundo selecionado no app, por exemplo `chroma_green`.
-
-O app principal fica para controles e configuracoes. A janela **OBS Avatar Output** fica limpa, sem botoes, pronta para transmissao.
-
-Para jogar sem atrapalhar:
-
-1. Abra a janela OBS.
-2. Desmarque **Manter janela OBS no topo**.
-3. Clique em **Ativar modo live** ou **Enviar OBS para tras**.
-4. Abra o jogo normalmente.
-
-O app continua rodando e o OBS continua capturando a janela. Para restaurar os controles, foque a janela **OBS Avatar Output** e aperte `F10`, ou use o menu da bandeja do Windows.
-
-Para uma camera virtual real, ative a **OBS Virtual Camera** depois de compor a cena no OBS. Assim Discord, Zoom e outros apps podem receber a cena como camera.
-
-## Bandeja Do Windows
-
-Ao fechar a janela principal, o app tenta ficar na bandeja do Windows. Pelo menu da bandeja voce pode:
-
-- abrir controles;
-- mostrar/ocultar OBS;
-- ligar/desligar microfone;
-- ativar modo live;
-- mostrar/ocultar pet;
-- sair do app.
-
-Se o Windows bloquear o tray, o app continua funcionando normalmente.
-
-## Licenca
-
-Este projeto e publico sob a licenca MIT.
-
-Copyright (c) 2026 **Dev RyanSantr**.
-
-## Privacidade E Logs
-
-O app processa audio e imagens localmente. Nada e enviado para internet.
-
-Os logs ficam em:
-
-```text
-%USERPROFILE%\.avatarcam_2d\logs
-```
-
-Use **Apagar configuracoes locais** para remover configuracoes, perfis, caminhos de imagens e logs.
+Projeto original de RyanSantr; MIT preservada. Modelo de exemplo VRM1_Constraint_Twist_Sample, © 2022 pixiv Inc., arquivo preservado sem alterações. Detector MediaPipe incluído. Fontes, condições e licenças em THIRD_PARTY_NOTICES.txt e third-party-licenses/.

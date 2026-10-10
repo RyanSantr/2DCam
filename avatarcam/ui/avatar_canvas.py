@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import math
+import time
+from avatarcam.core.asset_store import AssetStore
 from pathlib import Path
 import tkinter as tk
 from typing import Any
@@ -17,6 +19,21 @@ class AvatarCanvas(tk.Canvas):
 
     def __init__(self, master: tk.Misc, **kwargs: Any) -> None:
         super().__init__(master, highlightthickness=0, **kwargs)
+        root = self._root()
+        if not hasattr(root, 'asset_store'):
+            root.asset_store = AssetStore()
+        self.asset_store = root.asset_store
+        self._sequence_map = {}
+        self.animation_origin = time.monotonic()
+        self._items = {}
+        self._background_signature = None
+        self.transform_callback = None
+        self.bind('<ButtonPress-1>', lambda e: self._start_drag(e, False))
+        self.bind('<ButtonPress-3>', lambda e: self._start_drag(e, True))
+        self.bind('<B1-Motion>', self._drag)
+        self.bind('<B3-Motion>', self._drag)
+        self.bind('<MouseWheel>', self._zoom)
+        self.bind('<Double-Button-1>', self._center)
         self.avatar = {}
         self.idle_paths: list[str] = []
         self.speaking_paths: dict[str, list[str]] = {"low": [], "mid": [], "high": []}
@@ -90,6 +107,7 @@ class AvatarCanvas(tk.Canvas):
         self.pet_pil_frames = self._load_pil_frames(pet_paths)
         self.pet_speaking_pil_frames = self._load_pil_frames(self.pet_speaking_paths)
         self.pet_loud_pil_frames = self._load_pil_frames(self.pet_loud_paths)
+        self._prune_sequences()
         self._fit_cache.clear()
         self._pet_fit_cache.clear()
         self._last_signature = None
@@ -129,6 +147,7 @@ class AvatarCanvas(tk.Canvas):
         self.blink_paths = next_blink
         self.blink_frames = self._load_images(self.blink_paths)
         self.blink_pil_frames = self._load_pil_frames(self.blink_paths)
+        self._prune_sequences()
         self._fit_cache.clear()
         self._last_signature = None
         self.draw()
@@ -241,7 +260,7 @@ class AvatarCanvas(tk.Canvas):
     def update_state(self, speaking: bool, level: float) -> None:
         self.speaking = speaking
         self.level = level
-        self.frame += 1
+        self.frame = int((time.monotonic() - self.animation_origin) * 30)
         if not self._should_redraw():
             return
         self.draw()
@@ -260,7 +279,8 @@ class AvatarCanvas(tk.Canvas):
             self.speaking,
             level_bucket,
             frame_bucket,
-            len(frames),
+            id(frames),
+            self._frame_index(frames) if frames else 0,
             len(self.blink_frames),
             self.background,
             round(self.avatar_scale, 2),
@@ -286,7 +306,8 @@ class AvatarCanvas(tk.Canvas):
         return True
 
     def draw(self) -> None:
-        self.delete("all")
+        self.itemconfigure('dynamic', state='hidden')
+        self.delete('empty')
         w = max(1, self.winfo_width())
         h = max(1, self.winfo_height())
         cx = w / 2 + (w * self.offset_x * 0.5)
@@ -295,15 +316,31 @@ class AvatarCanvas(tk.Canvas):
         talk_bounce = min(1.0, self.level * 3) * 9 * scale if self.speaking and self.idle_motion else 0
         cy = h * 0.55 + (h * self.offset_y * 0.5) + idle_bob - talk_bounce
 
-        self._draw_background(w, h)
+        background_signature = (w, h, self.background)
+        if self._background_signature != background_signature:
+            self.delete('background')
+            before = set(self.find_all())
+            self._draw_background(w, h)
+            for item in set(self.find_all()) - before:
+                self.addtag_withtag('background', item)
+            self.tag_lower('background')
+            self._background_signature = background_signature
         if self.pet_layer == "back":
             self._draw_pet(w, h, scale)
         if self._draw_custom_image(cx, cy):
             if self.pet_layer != "back":
                 self._draw_pet(w, h, scale)
+            for tag in ('avatar-shadow', 'avatar-image', 'pet-shadow', 'pet-image'):
+                self.tag_raise(tag)
+            if self.pet_layer == 'back':
+                self.tag_raise('avatar-shadow')
+                self.tag_raise('avatar-image')
             return
 
+        before = set(self.find_all())
         self._draw_empty_state(cx, cy, scale)
+        for item in set(self.find_all()) - before:
+            self.addtag_withtag('empty', item)
         if self.pet_layer != "back":
             self._draw_pet(w, h, scale)
 
@@ -322,69 +359,83 @@ class AvatarCanvas(tk.Canvas):
             for y in range(0, h, 42):
                 self.create_line(0, y, w, y, fill="#2b3a50", width=1)
 
-    def _load_images(self, paths: list[str]) -> list[tk.PhotoImage]:
-        frames: list[tk.PhotoImage] = []
-        for path in paths:
-            try:
-                if Path(path).is_file():
-                    frames.extend(self._load_file_frames(path))
-            except tk.TclError:
-                continue
-        return frames
+    def _load_images(self, paths: list[str]) -> list:
+        # Pillow e a unica copia dos frames; PhotoImage existe apenas no cache final.
+        return []
 
-    def _load_file_frames(self, path: str) -> list[tk.PhotoImage]:
-        if Path(path).suffix.lower() != ".gif":
-            return [tk.PhotoImage(file=path)]
-
-        frames: list[tk.PhotoImage] = []
-        for index in range(MAX_GIF_FRAMES):
-            try:
-                frames.append(tk.PhotoImage(file=path, format=f"gif -index {index}"))
-            except tk.TclError:
-                break
-        return frames or [tk.PhotoImage(file=path)]
-
-    def _load_pil_frames(self, paths: list[str]) -> list[Any]:
+    def _load_pil_frames(self, paths: list[str]) -> list:
         try:
-            from PIL import Image, ImageSequence
-        except Exception:
+            sequence = self.asset_store.load(paths)
+        except (OSError, ValueError) as exc:
+            import logging
+            logging.getLogger('avatarcam').warning('Asset nao carregado: %s', exc)
             return []
-        frames: list[Any] = []
-        for path in paths:
-            file_path = Path(path)
-            if not file_path.is_file():
-                continue
-            try:
-                with Image.open(file_path) as image:
-                    if file_path.suffix.lower() == ".gif":
-                        for frame in ImageSequence.Iterator(image):
-                            frames.append(frame.convert("RGBA").copy())
-                            if len(frames) >= MAX_GIF_FRAMES:
-                                break
-                    else:
-                        frames.append(image.convert("RGBA").copy())
-            except Exception:
-                continue
-        return frames
+        self._sequence_map[id(sequence.frames)] = sequence
+        return sequence.frames
+
+    def _frame_index(self, frames: list, speed: float = 1) -> int:
+        sequence = self._sequence_map.get(id(frames))
+        seconds = (time.monotonic() - self.animation_origin) * speed
+        return sequence.index(seconds, self.animation_fps) if sequence else int(seconds * self.animation_fps) % len(frames)
+
+    def _prune_sequences(self):
+        active = [self.idle_pil_frames, self.blink_pil_frames, self.pet_pil_frames, self.pet_speaking_pil_frames, self.pet_loud_pil_frames, *self.speaking_pil_frames.values()]
+        active_ids = {id(frames) for frames in active}
+        self._sequence_map = {key: sequence for key, sequence in self._sequence_map.items() if key in active_ids}
+
+    def _upsert(self, name, kind, coordinates, **options):
+        item = self._items.get(name)
+        if item is None:
+            item = getattr(self, 'create_' + kind)(*coordinates, tags=('dynamic', name), **options)
+            self._items[name] = item
+        else:
+            self.coords(item, *coordinates)
+            self.itemconfigure(item, state='normal', **options)
+        return item
+
+    def _start_drag(self, event, pet):
+        self._dragging_pet = pet
+        self._drag_start = (event.x, event.y, self.pet_offset_x if pet else self.offset_x, self.pet_offset_y if pet else self.offset_y)
+
+    def _drag(self, event):
+        if not hasattr(self, '_drag_start'):
+            return
+        x, y, ox, oy = self._drag_start
+        nx = max(-.8, min(.8, ox + 2 * (event.x-x) / max(1, self.winfo_width())))
+        ny = max(-.8, min(.8, oy + 2 * (event.y-y) / max(1, self.winfo_height())))
+        if self._dragging_pet:
+            self.pet_offset_x, self.pet_offset_y = nx, ny
+        else:
+            self.offset_x, self.offset_y = nx, ny
+        if self.transform_callback:
+            self.transform_callback('pet' if self._dragging_pet else 'avatar', nx, ny, None)
+        self._last_signature = None
+        self.draw()
+
+    def _zoom(self, event):
+        pet = bool(event.state & 1)
+        current = self.pet_size if pet else self.avatar_scale
+        low, high = (.45, 1.6) if pet else (.25, 2.5)
+        scale = max(low, min(high, current * (1.06 if event.delta > 0 else 1 / 1.06)))
+        if self.transform_callback:
+            self.transform_callback('pet' if pet else 'avatar', None, None, scale)
+        return 'break'
+
+    def _center(self, _event=None):
+        if self.transform_callback:
+            self.transform_callback('avatar', 0, 0, 1)
+        return 'break'
 
     def _draw_custom_image(self, cx: float, cy: float) -> bool:
         frames = self._current_frames()
         if not frames:
             return False
 
-        step = max(1, int(30 / self.animation_fps))
-        image = frames[(self.frame // step) % len(frames)]
+        image = frames[self._frame_index(frames)]
         image = self._fit_image(image)
         if self.avatar_shadow:
-            self.create_oval(
-                cx - image.width() * 0.36,
-                cy + image.height() * 0.36,
-                cx + image.width() * 0.36,
-                cy + image.height() * 0.47,
-                fill="#000000",
-                outline="",
-            )
-        self.create_image(cx, cy, image=image, anchor=tk.CENTER)
+            self._upsert('avatar-shadow', 'oval', (cx-image.width()*.36, cy+image.height()*.36, cx+image.width()*.36, cy+image.height()*.47), fill='#000000', outline='')
+        self._upsert('avatar-image', 'image', (cx, cy), image=image, anchor=tk.CENTER)
         self._last_drawn_image = image
         return True
 
@@ -429,8 +480,8 @@ class AvatarCanvas(tk.Canvas):
                 if key not in self._fit_cache:
                     if len(self._fit_cache) > MAX_FIT_CACHE:
                         self._fit_cache.clear()
-                    pil_image = image.copy()
-                    pil_image.thumbnail((max_w, max_h))
+                    from PIL import ImageOps
+                    pil_image = ImageOps.contain(image, (max_w, max_h), Image.Resampling.LANCZOS)
                     if abs(self.avatar_rotation) > 0.05:
                         resampling = getattr(Image, "Resampling", Image).BICUBIC
                         pil_image = pil_image.rotate(-self.avatar_rotation, expand=True, resample=resampling)
@@ -491,18 +542,10 @@ class AvatarCanvas(tk.Canvas):
         speed_bonus = 1
         if reacting and self.pet_reaction in ("speed", "bounce_speed", "shake_speed"):
             speed_bonus = 2
-        step = max(1, int(30 / max(1, self.animation_fps * speed_bonus)))
-        source = frames[(self.frame // step) % len(frames)]
+        source = frames[self._frame_index(frames, speed_bonus)]
         image = self._fit_pet_image(source, size)
         if self.avatar_shadow:
-            self.create_oval(
-                x - image.width() * 0.36,
-                y + image.height() * 0.34,
-                x + image.width() * 0.36,
-                y + image.height() * 0.46,
-                fill="#000000",
-                outline="",
-            )
+            self._upsert('pet-shadow', 'oval', (x-image.width()*.36, y+image.height()*.34, x+image.width()*.36, y+image.height()*.46), fill='#000000', outline='')
         if reacting:
             intensity = min(1.0, self.level * 2.8) * self.pet_reaction_strength
             if self.pet_reaction in ("bounce", "bounce_speed"):
@@ -512,7 +555,7 @@ class AvatarCanvas(tk.Canvas):
                 y += math.cos(self.frame * 1.1) * size * 0.08 * intensity
             elif self.pet_reaction == "float":
                 y += math.sin(self.frame / 5) * size * 0.16 * intensity
-        self.create_image(x, y, image=image, anchor=tk.CENTER)
+        self._upsert('pet-image', 'image', (x, y), image=image, anchor=tk.CENTER)
         self._last_drawn_pet_image = image
 
     def _fit_pet_image(self, image: Any, size: float) -> tk.PhotoImage:
@@ -522,16 +565,15 @@ class AvatarCanvas(tk.Canvas):
             try:
                 from PIL import ImageOps, ImageTk
 
-                pil_image = image.copy()
-                pil_image.thumbnail((max_w, max_h))
-                if self.pet_mirror:
-                    pil_image = ImageOps.mirror(pil_image)
-                if self.pet_opacity < 0.99:
-                    alpha = pil_image.getchannel("A").point(lambda value: int(value * self.pet_opacity))
-                    pil_image.putalpha(alpha)
-                key = (id(image), max_w, round(self.pet_opacity, 2), self.pet_mirror)
+                key = (id(image), max_w, max_h, round(self.pet_opacity, 2), self.pet_mirror)
                 if key not in self._pet_fit_cache:
-                    if len(self._pet_fit_cache) > MAX_FIT_CACHE:
+                    from PIL import Image
+                    pil_image = ImageOps.contain(image, (max_w, max_h), Image.Resampling.LANCZOS)
+                    if self.pet_mirror:
+                        pil_image = ImageOps.mirror(pil_image)
+                    if self.pet_opacity < .99:
+                        pil_image.putalpha(pil_image.getchannel('A').point(lambda value: int(value * self.pet_opacity)))
+                    if len(self._pet_fit_cache) >= MAX_FIT_CACHE:
                         self._pet_fit_cache.clear()
                     self._pet_fit_cache[key] = ImageTk.PhotoImage(pil_image)
                 return self._pet_fit_cache[key]

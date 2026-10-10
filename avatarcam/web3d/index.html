@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>2DCam Studio · Avatar 3D</title><link rel="stylesheet" href="style.css"></head>
+<body><main>
+<aside>
+  <div class="brand"><span class="brand-icon">2D</span><div>2DCam <b>Studio</b><small>SEU AVATAR, EM OUTRA DIMENSÃO</small></div></div>
+  <div class="section-kicker">ESTÚDIO 3D <span class="badge">LOCAL</span></div>
+  <h1>Pronto para<br>entrar em cena.</h1>
+  <p class="intro">Sua voz dá vida ao avatar.<br>Ajuste o enquadramento e leve para a live.</p>
+  <section class="card"><div class="card-label">AVATAR ATUAL</div><strong id="model-name">Nenhum modelo</strong><p id="capabilities">Importe um VRM ou GLB na aba Avatar 3D do app.</p></section>
+  <section class="card"><div class="card-label">ÁUDIO EM TEMPO REAL <span id="mic-indicator" class="dot"></span></div><div class="meter"><i id="meter"></i></div><div class="audio-row"><span id="voice-status">Microfone desligado</span><strong id="level">0%</strong></div><div class="buttons"><button id="microphone">Ativar microfone</button><button id="test">Testar fala</button></div></section>
+  <section><div class="card-label">EXPRESSÃO</div><div class="expressions" aria-label="Expressão facial">
+    <button data-expression="neutral" aria-pressed="true">Neutro</button><button data-expression="happy">Feliz</button><button data-expression="angry">Bravo</button><button data-expression="sad">Triste</button><button data-expression="relaxed">Calmo</button><button data-expression="surprised">Surpreso</button>
+  </div></section>
+  <section><div class="card-label">ENQUADRAMENTO</div><p class="hint">Arraste para girar · roda para aproximar<br>Botão direito para mover a câmera</p><div class="buttons"><button id="save-camera" class="primary">Salvar posição</button><button id="reset">Centralizar</button></div></section>
+  <button id="copy-obs" class="obs-button">Copiar fonte para o OBS <span>↗</span></button>
+  <footer><span class="dot"></span> Processamento local · sem upload</footer>
+</aside>
+<div id="stage">
+  <header><div><span class="section-kicker">PREVIEW AO VIVO</span><h2 id="scene-title">Seu palco digital</h2></div><span id="connection" class="status-pill">Conectando…</span></header>
+  <div class="stage-decoration"></div><canvas id="canvas" aria-label="Visualização 3D do avatar"></canvas>
+  <div id="notice" role="status">Importe seu avatar no painel ou experimente o exemplo.</div>
+  <div class="stage-bottom"><span><i class="dot"></i> VRM + GLB</span><span id="render-stats">WebGL · 30 FPS</span><button id="fullscreen">Tela cheia ⛶</button></div>
+</div>
+</main><div id="toast" role="status"></div><script type="module" src="viewer.js"></script></body></html>

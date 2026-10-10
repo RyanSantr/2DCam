@@ -1,131 +1,190 @@
-from __future__ import annotations
-
-from pathlib import Path
+"""Importacao em etapas, sem substituir a biblioteca anterior."""
+from pathlib import Path, PurePosixPath
 import json
+import os
 import shutil
+import tempfile
 import zipfile
+from PIL import Image
+from avatarcam.core.settings import APP_DIR, Settings
 
-from avatarcam.core.settings import APP_DIR
-
-
-AVATAR_DIR = APP_DIR / "avatars"
-IMAGE_EXTS = {".png", ".gif"}
+AVATAR_DIR = APP_DIR / 'avatars'
+IMAGE_EXTS = {'.png', '.gif'}
 MAX_IMAGE_SIDE = 1600
+MAX_PACK_BYTES = 256 * 1024 * 1024
+FOLDERS = {
+    'idle': ('idle',), 'talk': ('talk', 'fala'),
+    'talk_low': ('talk_low', 'fala_baixa'), 'talk_mid': ('talk_mid', 'fala_media'),
+    'talk_high': ('talk_high', 'fala_alta'), 'blink': ('blink', 'piscar'),
+    'pet': ('pet',), 'pet_talk': ('pet_talk', 'pet_fala'), 'pet_loud': ('pet_loud', 'pet_alto'),
+}
 
 
 def safe_name(name: str) -> str:
-    cleaned = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in name.strip())
-    return cleaned or "avatar"
+    cleaned = ''.join(ch if ch.isalnum() or ch in ('-', '_') else '_' for ch in name.strip())[:80]
+    reserved = {'CON', 'PRN', 'AUX', 'NUL', *('COM'+str(i) for i in range(1, 10)), *('LPT'+str(i) for i in range(1, 10))}
+    if cleaned.upper() in reserved:
+        cleaned = 'avatar_' + cleaned
+    return cleaned or 'avatar'
 
 
 def images_from_folder(folder: Path) -> list[str]:
     if not folder.is_dir():
         return []
-    return [str(path) for path in sorted(folder.iterdir()) if path.is_file() and path.suffix.lower() in IMAGE_EXTS]
+    return [str(p) for p in sorted(folder.iterdir()) if p.is_file() and p.suffix.lower() in IMAGE_EXTS]
 
 
 def copy_optimized_image(src: Path, dest: Path) -> None:
-    if src.suffix.lower() == ".gif":
-        shutil.copy2(src, dest)
-        return
+    with Image.open(src) as image:
+        image.verify()
+    with Image.open(src) as image:
+        if image.width * image.height > 32_000_000:
+            raise ValueError(f'Imagem muito grande: {src.name}')
+        if dest.suffix.lower() == '.gif':
+            shutil.copy2(src, dest)
+        else:
+            image = image.convert('RGBA')
+            image.thumbnail((MAX_IMAGE_SIDE, MAX_IMAGE_SIDE), Image.Resampling.LANCZOS)
+            image.save(dest, format='PNG', optimize=True)
 
-    try:
-        from PIL import Image
 
-        with Image.open(src) as image:
-            image.load()
-            if max(image.size) > MAX_IMAGE_SIDE:
-                image.thumbnail((MAX_IMAGE_SIDE, MAX_IMAGE_SIDE), Image.Resampling.LANCZOS)
-            image.save(dest, format="PNG", optimize=True)
-    except Exception:
-        shutil.copy2(src, dest)
+def _commit(stage: Path, name: str, settings: dict | None = None) -> dict:
+    target = AVATAR_DIR / safe_name(name)
+    number = 2
+    while target.exists():
+        target = AVATAR_DIR / f'{safe_name(name)}_{number}'
+        number += 1
+    stage.rename(target)
+    models = list((target / 'model').glob('*')) if (target / 'model').is_dir() else []
+    return {'name': target.name, 'settings': settings or {}, 'model_path': str(models[0]) if models else '', 'sets': {key: images_from_folder(target / key) for key in FOLDERS}}
 
 
 def import_avatar_folder(source: str, name: str) -> dict:
     source_path = Path(source)
-    target = AVATAR_DIR / safe_name(name)
-    if target.exists():
-        shutil.rmtree(target)
-    target.mkdir(parents=True, exist_ok=True)
-
-    folders = {
-        "idle": ("idle",),
-        "talk": ("talk", "fala"),
-        "talk_low": ("talk_low", "fala_baixa"),
-        "talk_mid": ("talk_mid", "fala_media"),
-        "talk_high": ("talk_high", "fala_alta"),
-        "blink": ("blink", "piscar"),
-        "pet": ("pet",),
-        "pet_talk": ("pet_talk", "pet_fala"),
-        "pet_loud": ("pet_loud", "pet_alto"),
-    }
-
-    result = {}
-    for key, candidates in folders.items():
-        src_folder = next((source_path / item for item in candidates if (source_path / item).is_dir()), None)
-        dst_folder = target / key
-        dst_folder.mkdir(parents=True, exist_ok=True)
-        if src_folder:
-            for src in images_from_folder(src_folder):
-                src_path = Path(src)
-                destination = dst_folder / (src_path.stem + src_path.suffix.lower())
-                copy_optimized_image(src_path, destination)
-        result[key] = images_from_folder(dst_folder)
-
-    manifest = {"name": name, "folders": list(folders.keys())}
-    (target / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-    return result
+    if not source_path.is_dir():
+        raise ValueError('Pasta de avatar nao encontrada.')
+    sources = {key: next((source_path / alias for alias in aliases if (source_path / alias).is_dir()), None) for key, aliases in FOLDERS.items()}
+    if not any(images_from_folder(sources[key]) for key in ('idle', 'talk') if sources[key]):
+        raise ValueError('Use subpastas idle e/ou talk (fala) com imagens.')
+    AVATAR_DIR.mkdir(parents=True, exist_ok=True)
+    stage = Path(tempfile.mkdtemp(prefix='.import-', dir=AVATAR_DIR))
+    try:
+        total = 0
+        for key, folder in sources.items():
+            destination = stage / key
+            destination.mkdir()
+            if folder:
+                for path in images_from_folder(folder):
+                    src = Path(path)
+                    total += src.stat().st_size
+                    if total > MAX_PACK_BYTES:
+                        raise ValueError('Avatar excede 256 MB.')
+                    copy_optimized_image(src, destination / (src.stem + src.suffix.lower()))
+        (stage / 'manifest.json').write_text(json.dumps({'version': 2, 'name': name}), encoding='utf-8')
+        return _commit(stage, name)['sets']
+    finally:
+        if stage.exists():
+            shutil.rmtree(stage)
 
 
-def export_avatar_pack(destination: str, name: str, image_sets: dict, settings: dict) -> None:
+def export_avatar_pack(destination: str, name: str, image_sets: dict, settings: dict, model_path: str = '') -> None:
+    Settings.from_dict(settings)
     dest = Path(destination)
-    manifest = {
-        "name": name,
-        "settings": settings,
-        "sets": {key: [Path(path).name for path in paths] for key, paths in image_sets.items()},
-    }
-    with zipfile.ZipFile(dest, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr("manifest.json", json.dumps(manifest, indent=2))
-        for key, paths in image_sets.items():
-            for path in paths:
-                src = Path(path)
-                if src.is_file():
-                    archive.write(src, f"{key}/{src.name}")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(dir=dest.parent, suffix='.avatarpack.tmp')
+    os.close(fd)
+    try:
+        sets = {}
+        total_bytes = 0
+        total_files = 1
+        with zipfile.ZipFile(temporary, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
+            model_entry = ''
+            if model_path:
+                from avatarcam.core.model3d import inspect_model
+                model = Path(model_path)
+                inspect_model(model)
+                model_entry = 'model/' + model.name
+                total_bytes += model.stat().st_size
+                total_files += 1
+                archive.write(model, model_entry)
+            for key, paths in image_sets.items():
+                if key not in FOLDERS:
+                    continue
+                sets[key] = []
+                for index, path in enumerate(paths):
+                    src = Path(path)
+                    if not src.is_file():
+                        raise ValueError(f'Asset ausente: {src.name}')
+                    total_bytes += src.stat().st_size
+                    total_files += 1
+                    if total_bytes > MAX_PACK_BYTES or total_files > 2048:
+                        raise ValueError('Pacote excede 256 MB ou 2048 arquivos.')
+                    filename = f'{index:04d}_{src.name}'
+                    archive.write(src, f'{key}/{filename}')
+                    sets[key].append(filename)
+            archive.writestr('manifest.json', json.dumps({'version': 2, 'name': name, 'sets': sets, 'settings': settings, 'model': model_entry}, ensure_ascii=False, allow_nan=False))
+        os.replace(temporary, dest)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
 
 
 def import_avatar_pack(pack_path: str) -> dict:
-    pack = Path(pack_path)
-    with zipfile.ZipFile(pack, "r") as archive:
-        manifest = json.loads(archive.read("manifest.json").decode("utf-8"))
-        name = safe_name(manifest.get("name", pack.stem))
-        target = AVATAR_DIR / name
-        if target.exists():
-            shutil.rmtree(target)
-        target.mkdir(parents=True, exist_ok=True)
-        target_root = target.resolve()
-        for member in archive.infolist():
-            destination = (target / member.filename).resolve()
-            try:
-                destination.relative_to(target_root)
-            except ValueError as exc:
-                raise ValueError("Avatarpack contem caminho invalido")
-            if member.is_dir():
-                destination.mkdir(parents=True, exist_ok=True)
-                continue
-            archive.extract(member, target)
-
-    return {
-        "name": manifest.get("name", pack.stem),
-        "settings": manifest.get("settings", {}),
-        "sets": {
-            "idle": images_from_folder(target / "idle"),
-            "talk": images_from_folder(target / "talk"),
-            "talk_low": images_from_folder(target / "talk_low"),
-            "talk_mid": images_from_folder(target / "talk_mid"),
-            "talk_high": images_from_folder(target / "talk_high"),
-            "blink": images_from_folder(target / "blink"),
-            "pet": images_from_folder(target / "pet"),
-            "pet_talk": images_from_folder(target / "pet_talk"),
-            "pet_loud": images_from_folder(target / "pet_loud"),
-        },
-    }
+    with zipfile.ZipFile(pack_path, 'r') as archive:
+        infos = archive.infolist()
+        if len(infos) > 2048 or sum(i.file_size for i in infos) > MAX_PACK_BYTES:
+            raise ValueError('Avatarpack excede o limite de arquivos ou 256 MB.')
+        manifests = [i for i in infos if i.filename == 'manifest.json']
+        if len(manifests) != 1 or manifests[0].file_size > 1_000_000:
+            raise ValueError('Manifesto ausente, duplicado ou muito grande.')
+        seen = set()
+        for item in infos:
+            parts = PurePosixPath(item.filename).parts
+            if '\\' in item.filename or not parts or item.filename.startswith('/') or any(p in ('.', '..') or ':' in p for p in parts):
+                raise ValueError('Avatarpack contem caminho invalido.')
+            folded = item.filename.casefold()
+            if folded in seen:
+                raise ValueError('Avatarpack contem nomes duplicados.')
+            seen.add(folded)
+            if item.is_dir():
+                if len(parts) != 1 or parts[0] not in (*FOLDERS, 'model'):
+                    raise ValueError('Pasta inesperada no avatarpack.')
+            elif item.filename != 'manifest.json' and (len(parts) != 2 or not ((parts[0] in FOLDERS and Path(parts[1]).suffix.lower() in IMAGE_EXTS) or (parts[0] == 'model' and Path(parts[1]).suffix.lower() in ('.glb', '.vrm')))):
+                raise ValueError('Arquivo inesperado no avatarpack.')
+        manifest = json.loads(archive.read('manifest.json').decode('utf-8'))
+        if not isinstance(manifest, dict) or not isinstance(manifest.get('name', 'Avatar'), str):
+            raise ValueError('Manifesto invalido.')
+        model_entries = [i.filename for i in infos if i.filename.startswith('model/') and not i.is_dir()]
+        if len(model_entries) > 1 or (model_entries and manifest.get('model') != model_entries[0]):
+            raise ValueError('Manifesto do modelo 3D invalido.')
+        settings = manifest.get('settings', {})
+        checked = Settings.from_dict(settings)
+        normalized = {key: getattr(checked, key) for key in settings if hasattr(checked, key)}
+        AVATAR_DIR.mkdir(parents=True, exist_ok=True)
+        stage = Path(tempfile.mkdtemp(prefix='.import-', dir=AVATAR_DIR))
+        try:
+            for key in FOLDERS:
+                (stage / key).mkdir()
+            if model_entries:
+                (stage / 'model').mkdir()
+            for item in infos:
+                if item.is_dir() or item.filename == 'manifest.json':
+                    continue
+                if item.filename in model_entries:
+                    from avatarcam.core.model3d import inspect_model
+                    model = stage / item.filename
+                    model.write_bytes(archive.read(item))
+                    inspect_model(model)
+                    continue
+                raw = stage / (PurePosixPath(item.filename).name + '.raw')
+                raw.write_bytes(archive.read(item))
+                try:
+                    copy_optimized_image(raw, stage / item.filename)
+                finally:
+                    raw.unlink(missing_ok=True)
+            if not images_from_folder(stage / 'idle') and not images_from_folder(stage / 'talk') and not model_entries:
+                raise ValueError('Avatarpack sem imagens de idle ou fala.')
+            (stage / 'manifest.json').write_text(json.dumps(manifest), encoding='utf-8')
+            return _commit(stage, manifest.get('name', Path(pack_path).stem), normalized)
+        finally:
+            if stage.exists():
+                shutil.rmtree(stage)
