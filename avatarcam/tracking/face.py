@@ -71,7 +71,7 @@ class FaceSmoother:
 def create_landmarker(video=True):
     import mediapipe as mp
     options = mp.tasks.vision.FaceLandmarkerOptions(
-        base_options=mp.tasks.BaseOptions(model_asset_path=str(MODEL)),
+        base_options=mp.tasks.BaseOptions(model_asset_buffer=MODEL.read_bytes()),
         running_mode=mp.tasks.vision.RunningMode.VIDEO if video else mp.tasks.vision.RunningMode.IMAGE,
         num_faces=1, output_face_blendshapes=True, output_facial_transformation_matrixes=True)
     return mp.tasks.vision.FaceLandmarker.create_from_options(options)

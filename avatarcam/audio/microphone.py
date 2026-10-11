@@ -50,14 +50,14 @@ class MicrophoneInput:
             import sounddevice as sd
         except ImportError as exc:
             raise RuntimeError(
-                "A biblioteca sounddevice nao esta instalada. Rode: pip install -r requirements.txt"
+                "O componente de áudio não está disponível nesta cópia. Baixe novamente o aplicativo completo."
             ) from exc
 
         self._sounddevice = sd
         if self._stream is not None:
             self.stop()
         if self.speech_mode == 'vad' and not self.vad_available:
-            raise RuntimeError('Filtro de voz indisponivel. Instale webrtcvad-wheels ou use o modo volume.')
+            raise RuntimeError('Filtro de voz indisponível nesta cópia. Use o modo Volume nas configurações de áudio.')
         # Negocia uma taxa suportada pelo dispositivo e pelo detector de voz.
         for rate in (48000, 32000, 16000, 8000):
             try:

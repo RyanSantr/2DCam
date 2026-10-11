@@ -212,7 +212,7 @@ Outras dependencias no executavel: Python (PSF), NumPy (BSD), Pillow (HPND/MIT-C
 
 
 2DCam Studio 3.0 - novos componentes
-PySide6/Qt 6.8.3 e Shiboken 6.8.3: LGPL-3.0; licencas incluidas em third-party-licenses/. Bibliotecas dinamicas sem alteracoes distribuidas em _internal; o codigo do aplicativo e scripts de reconstrucao estao incluidos. Substituicao das bibliotecas compativeis e depuracao de modificacoes para uso pessoal nao sao proibidas por este pacote.
+PySide6/Qt 6.8.3 e Shiboken 6.8.3: LGPL-3.0; licencas incluidas em third-party-licenses/. Bibliotecas dinamicas sem alteracoes preparadas em uma pasta local pelo executavel unico, ou em _internal na distribuicao portatil. Codigo e scripts de reconstrucao: https://github.com/RyanSantr/2DCam. Substituicao das bibliotecas compativeis e depuracao de modificacoes para uso pessoal nao sao proibidas por este pacote.
 Fontes Qt/PySide: https://code.qt.io/cgit/pyside/pyside-setup.git/tree/?h=6.8.3 e https://code.qt.io/cgit/qt/qtwebengine.git/tree/?h=6.8.3
 Qt WebEngine inclui Chromium e seus avisos/licencas nos recursos do proprio componente.
 MediaPipe 0.10.21: Apache-2.0, https://github.com/google-ai-edge/mediapipe/tree/v0.10.21

@@ -393,6 +393,8 @@ class StudioWindow(QMainWindow):
         editing.addAction('Montar personagem 2D…',self.edit_poses)
         editing.addAction('Expressões do modelo…',self.edit_expressions)
         menu=self.menuBar().addMenu('Ajuda'); menu.addAction('Como usar',lambda:QMessageBox.information(self,'Comece por aqui','1. Importe um PNG/GIF, VRM ou GLB.\n2. Ative o microfone ou o rastreamento.\n3. Calibre a posição neutra olhando para a câmera.\n4. Ajuste o enquadramento com o mouse.\n5. Abra Janela do avatar para uma saída sem controles.\n\nCtrl+O: importar · Ctrl+M: microfone · Ctrl+T: câmera · Espaço: teste de fala.'))
+        from avatarcam.desktop.about import show_about
+        menu.addAction('Sobre, ajuda e créditos',lambda:show_about(self))
 
     def select_panel(self,index):
         self.panels.setCurrentIndex(index); self.navigation.button(index).setChecked(True)

@@ -1,4 +1,4 @@
-# 2DCam Studio 3.5
+# 2DCam Studio 3.6
 
 [![Testes Windows](https://github.com/RyanSantr/2DCam/actions/workflows/tests.yml/badge.svg)](https://github.com/RyanSantr/2DCam/actions/workflows/tests.yml)
 
@@ -6,13 +6,15 @@ Aplicativo Windows para usar avatares 2D e 3D na própria janela, com voz e rast
 
 ## Abrir
 
-Baixe o ZIP Windows em [Releases](https://github.com/RyanSantr/2DCam/releases/latest). O botão **Code → Download ZIP** contém o código-fonte; o aplicativo pronto está em Releases.
+Baixe **2DCam-Studio-3.6.exe** em [Releases](https://github.com/RyanSantr/2DCam/releases/latest) e abra o arquivo. Não precisa extrair ZIP, instalar Python, instalar bibliotecas nem abrir navegador. Câmera e microfone começam desligados; a moça 3D de exemplo já acompanha o app.
 
-1. Extraia **todo o ZIP**.
-2. Abra **2DCamStudio.exe**.
-3. Mantenha **_internal** ao lado do executável.
+Na primeira abertura, uma janela mostra o progresso da preparação. Os componentes são guardados em `%LOCALAPPDATA%\2DCam\runtime` e reutilizados nas próximas aberturas. Essa preparação pode demorar, dependendo do disco e do antivírus; não exige download adicional nem privilégios de administrador. O preparador fecha assim que abre a janela do app, liberando sua memória. Arquivos ausentes fazem o app preparar novamente a sua cópia local.
 
-Não precisa instalar Python nem abrir navegador. Câmera e microfone começam desligados.
+Configurações, perfis e personagens importados ficam em `%USERPROFILE%\.avatarcam_2d`, independentemente da pasta do EXE. Os exemplos são mantidos nessa biblioteca para continuarem disponíveis na próxima abertura. O EXE pode ser movido; para atualizar, feche a versão anterior e abra o novo arquivo. Windows 10/11 x64, com os componentes .NET Framework do próprio Windows para a pequena janela de preparação. O aplicativo já inclui Python, Qt e o detector facial.
+
+O botão **Code → Download ZIP** contém o código-fonte. A versão 3.5 e anteriores usam um ZIP portátil; só essas versões exigem extrair tudo e manter `_internal` junto do executável.
+
+**Ajuda → Sobre, ajuda e créditos** reúne instruções e licenças dentro do app. Falhas de abertura geram uma mensagem e um registro limitado em `.avatarcam_2d/logs/studio.log`; não inclui imagens nem áudio.
 
 Abrir novamente traz os controles da instância existente para a frente. Cada biblioteca de configurações usa uma única instância, evitando carregar o avatar duas vezes.
 
@@ -132,6 +134,6 @@ Os atalhos de live funcionam nos controles e na saída. Para usá-los enquanto o
 
 ## Código e créditos
 
-Código principal em avatarcam/desktop e avatarcam/tracking. Com Python 3.12 de 64 bits, execute `scripts/run.bat` para iniciar pelo código ou `scripts/build_exe.bat` para gerar o aplicativo. O resultado é dist/2DCamStudio/; distribua a pasta inteira. O renderizador compilado e os modelos já estão no repositório; Node só é necessário ao alterar o JavaScript. Módulos antigos são mantidos somente para regressão; o executável usa a interface nativa.
+Código principal em avatarcam/desktop e avatarcam/tracking. Com Python 3.12 de 64 bits, execute `scripts/run.bat` para iniciar pelo código ou `scripts/build_exe.bat` para gerar o aplicativo. O construtor gera a pasta de runtime e `dist/2DCam-Studio-3.6.exe`, o arquivo único. Para usar diretamente a pasta de runtime `dist/2DCamStudio`, distribua a pasta inteira. O renderizador compilado e os modelos já estão no repositório; Node só é necessário ao alterar o JavaScript. Módulos antigos são mantidos somente para regressão; o executável usa a interface nativa.
 
 Projeto original de RyanSantr; MIT preservada. Modelo de exemplo VRM1_Constraint_Twist_Sample, © 2022 pixiv Inc., arquivo preservado sem alterações. Detector MediaPipe incluído. Fontes, condições e licenças em THIRD_PARTY_NOTICES.txt e third-party-licenses/.

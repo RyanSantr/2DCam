@@ -20,7 +20,8 @@ from avatarcam.desktop.library import avatar_id, update_library, clean_name
 from avatarcam.desktop.creative import History, AdaptiveQuality, GESTURES, expression_config, helpful_issues
 from avatarcam.desktop.recovery import capture_state, apply_state, SessionRecovery
 
-ASSETS = Path(__file__).resolve().parents[1] / 'assets'
+from avatarcam.desktop.resources import asset_directory, restore_builtin_paths
+ASSETS = asset_directory()
 PACK_SETTINGS = ('avatar_scale','avatar_offset_x','avatar_offset_y','avatar_rotation','animation_fps','camera3d',
                  'auto_rotate3d','pet_enabled','pet_size','pet_offset_x','pet_offset_y')
 
@@ -33,12 +34,14 @@ class StudioController(QObject):
     def __init__(self):
         super().__init__()
         self.settings = Settings.load()
+        from dataclasses import asdict
+        self.settings = Settings.from_dict(restore_builtin_paths(asdict(self.settings), ASSETS))
         try:
             self.preferences = json.loads((APP_DIR/'studio-desktop.json').read_text(encoding='utf-8'))
             if not isinstance(self.preferences, dict): self.preferences = {}
         except (OSError, ValueError): self.preferences = {}
         from avatarcam.desktop.preferences import sanitize_preferences
-        self.preferences = sanitize_preferences(self.preferences)
+        self.preferences = sanitize_preferences(restore_builtin_paths(self.preferences, ASSETS))
         self.mode = self.preferences.get('mode', '3D')
         if self.mode not in ('2D','3D','Live2D'): self.mode = '3D'
         self.model_path = self.settings.avatar3d_path

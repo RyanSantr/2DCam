@@ -12,5 +12,7 @@ python -m pip install -r requirements.txt
 if errorlevel 1 exit /b 1
 python -m PyInstaller --noconfirm --clean 2DCam.spec
 if errorlevel 1 exit /b 1
-echo Executavel pronto: dist\2DCamStudio\2DCamStudio.exe
+python scripts\build_standalone.py
+if errorlevel 1 exit /b 1
+echo Executavel unico pronto: dist\2DCam-Studio-3.6.exe
 pause
