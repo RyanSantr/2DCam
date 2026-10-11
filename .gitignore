@@ -17,6 +17,8 @@ settings.json
 studio-instance.lock
 qa-output/
 work/
+# Relatórios locais de verificação não fazem parte do aplicativo.
+/VERIFICACAO_*.json
 .env
 
 avatarcam/web3d/live2d.js
