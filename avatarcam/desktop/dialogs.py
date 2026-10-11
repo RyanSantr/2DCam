@@ -1,5 +1,6 @@
 """Ferramentas abertas sob demanda para manter o estúdio compacto."""
 from pathlib import Path
+import math
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QImageReader, QPixmap, QMovie
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton,
@@ -15,6 +16,56 @@ def push(text, callback):
 
 def text(value):
     item = QLabel(value); item.setWordWrap(True); return item
+
+
+class MotionDialog(QDialog):
+    def __init__(self, owner):
+        super().__init__(owner); self.c = owner.controller
+        self.setWindowTitle('Testar movimentos sem câmera'); self.resize(380, 500)
+        layout = QVBoxLayout(self)
+        layout.addWidget(text('Veja o personagem na janela do app. O teste simula os movimentos e não liga câmera nem microfone.'))
+        self.status = text('Arraste um controle ou reproduza o teste completo.'); layout.addWidget(self.status)
+        self.sliders = {}; grid = QGridLayout()
+        fields = [('yaw','Virar cabeça',-45,45), ('pitch','Subir / baixar',-45,45),
+                  ('roll','Inclinar',-45,45), ('gazeX','Olhar lateral',-100,100),
+                  ('gazeY','Olhar vertical',-100,100), ('jaw','Abrir boca',0,100),
+                  ('blinkLeft','Fechar olhos',0,100), ('smile','Sorriso',0,100)]
+        for row, (key, title, low, high) in enumerate(fields):
+            slider = QSlider(Qt.Orientation.Horizontal); slider.setRange(low,high)
+            slider.setAccessibleName(title); slider.setToolTip(title)
+            slider.valueChanged.connect(lambda _: self.apply())
+            self.sliders[key] = slider; grid.addWidget(text(title),row,0); grid.addWidget(slider,row,1)
+        layout.addLayout(grid)
+        self.play_button = push('Reproduzir teste · 12 segundos', self.play); layout.addWidget(self.play_button)
+        layout.addWidget(push('Voltar ao normal', self.reset))
+        layout.addWidget(push('Fechar', self.accept))
+        self.finished.connect(lambda _: self.c.stop_motion_preview())
+        self.c.changed.connect(self.refresh)
+
+    def apply(self):
+        values = {key: math.radians(slider.value()) if key in ('yaw','pitch','roll') else slider.value()/100 for key, slider in self.sliders.items()}
+        values['blinkRight'] = values['blinkLeft']
+        self.c.preview_motion(values)
+
+    def play(self): self.c.preview_motion(sequence=True)
+
+    def reset(self):
+        for slider in self.sliders.values():
+            slider.blockSignals(True); slider.setValue(0); slider.blockSignals(False)
+        self.c.stop_motion_preview()
+
+    def refresh(self):
+        allowed = not self.c.paused and not self.c.inputs.wanted['camera']
+        self.play_button.setEnabled(allowed)
+        for slider in self.sliders.values(): slider.setEnabled(allowed)
+        preview = self.c.motion_preview
+        if not allowed: message = 'Retome o personagem e desligue o rastreamento para testar.'
+        elif preview.active and preview.sequence:
+            elapsed = min(11, max(0, int(self.c.last_tick-preview.started)))
+            message = ('Cabeça','Olhos','Boca','Piscar e sorrir')[elapsed//3] + f' · {elapsed+1}/12 segundos'
+        elif preview.active: message = 'Prévia manual. Voltar ao normal encerra a simulação.'
+        else: message = 'Pronto. Arraste um controle ou reproduza o teste completo.'
+        if self.status.text() != message: self.status.setText(message)
 
 
 class ExpressionEditor(QDialog):

@@ -57,7 +57,7 @@ class Avatar2D(QWidget):
         self.draw_avatar(painter, transparent=True); painter.end(); return image
 
     def draw_avatar(self, painter, transparent=False):
-        c = self.controller; s = c.settings; face = c.face; now=time.monotonic()
+        c = self.controller; s = c.settings; face = c.visual_face; now=time.monotonic()
         if c.paused and self.paused_at is None: self.paused_at=now
         elif not c.paused and self.paused_at is not None:
             self.paused_seconds+=now-self.paused_at; self.paused_at=None

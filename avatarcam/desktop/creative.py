@@ -1,6 +1,7 @@
 """Estado pequeno para expressões, gestos, histórico e qualidade adaptativa."""
 from copy import deepcopy
 import math
+from avatarcam.core.avatar_config import expression_config
 
 GESTURES = {'wave': 'Acenar', 'yes': 'Concordar', 'no': 'Negar', 'celebrate': 'Comemorar'}
 EXPRESSION_ACTIONS = ('neutral', 'happy', 'angry', 'sad', 'relaxed', 'surprised', 'mouth', 'blink')
@@ -10,19 +11,6 @@ def neutral_pose(value):
     value = value if isinstance(value, dict) else {}
     return {key: max(-.8,min(.8,number)) if isinstance(number,(int,float)) and not isinstance(number,bool) and math.isfinite(number) else 0.
             for key in ('yaw','pitch','roll') for number in [value.get(key,0.)]}
-
-
-def expression_config(value):
-    result = {}
-    if not isinstance(value, dict): return result
-    for action, entry in value.items():
-        if action not in EXPRESSION_ACTIONS or not isinstance(entry, dict): continue
-        target = entry.get('target', action)
-        intensity = entry.get('intensity', 1.)
-        if not isinstance(target, str) or len(target) > 100: continue
-        if isinstance(intensity, bool) or not isinstance(intensity, (int, float)) or not math.isfinite(intensity): intensity = 1.
-        result[action] = dict(target=target, intensity=max(0., min(1., intensity)))
-    return result
 
 
 class History:

@@ -19,6 +19,8 @@ from avatarcam.desktop.inputs import InputRecovery
 from avatarcam.desktop.library import avatar_id, update_library, clean_name
 from avatarcam.desktop.creative import History, AdaptiveQuality, GESTURES, expression_config, helpful_issues
 from avatarcam.desktop.recovery import capture_state, apply_state, SessionRecovery
+from avatarcam.desktop.motion import IdleMotion, MotionPreview
+from avatarcam.core.avatar_config import motion_config
 
 from avatarcam.desktop.resources import asset_directory, restore_builtin_paths
 ASSETS = asset_directory()
@@ -64,6 +66,8 @@ class StudioController(QObject):
         self.speech = SpeechDetector(self.settings.sensitivity, self.settings.smoothing, self.settings.mouth_hold_ticks)
         self.output_active=False; self.render_active=True; self.paused=False; self.resume_inputs=(False,False)
         self.tracker = FaceTracker(); self.smoother = FaceSmoother(); self.face = empty_face()
+        self.visual_face = empty_face(); self.motion_source = 'none'
+        self.idle_motion = IdleMotion(); self.motion_preview = MotionPreview()
         self.smoother.neutral = dict(self.preferences['face_neutral'])
         self.level = 0.; self.speaking = False; self.tracking_status = 'Câmera desligada'; self.error_seen = ''
         self.test_until = 0.; self.calibration_until = 0.; self.noise_samples = []
@@ -146,6 +150,34 @@ class StudioController(QObject):
 
     def issues(self): return helpful_issues(self)
 
+    def preview_motion(self, values=None, sequence=False):
+        if self.paused or self.inputs.wanted['camera']:
+            self.notice.emit('Retome o personagem e desligue o rastreamento para testar sem câmera.')
+            return False
+        self.motion_preview.start(values, time.monotonic(), sequence)
+        self.update_motion(0., time.monotonic())
+        self.changed.emit(); return True
+
+    def stop_motion_preview(self):
+        self.motion_preview.stop(); self.update_motion(0., time.monotonic()); self.changed.emit()
+
+    def update_motion(self, dt, now):
+        if self.paused: return
+        if self.inputs.wanted['camera']: self.motion_preview.stop()
+        preview = self.motion_preview.sample(now)
+        if preview is not None:
+            self.visual_face = preview; self.motion_source = 'preview'
+        elif self.face['detected']:
+            self.visual_face = dict(self.face); self.motion_source = 'camera'
+        elif self.preferences['idle_motion']:
+            self.visual_face = self.idle_motion.advance(dt if self.render_active else 0., self.preferences['idle_strength'], self.level, self.speaking)
+            for key in ('yaw', 'pitch', 'roll', 'gazeX', 'gazeY'):
+                limit = .8 if key in ('yaw', 'pitch', 'roll') else 1.
+                self.visual_face[key] = max(-limit, min(limit, self.visual_face[key] + self.face[key]))
+            self.motion_source = 'idle'
+        else:
+            self.visual_face = dict(self.face); self.motion_source = 'none'
+
     def start_recovery(self, restore=False):
         if restore and self.recovery.previous:
             try: apply_state(self, self.recovery.previous); self.notice.emit('Sessão recuperada. Entradas permanecem desligadas.')
@@ -153,6 +185,7 @@ class StudioController(QObject):
         self.recovery_started = True; self.recovery.checkpoint(capture_state(self))
 
     def toggle_pause(self):
+        self.motion_preview.stop()
         if not self.paused:
             self.resume_inputs=(self.inputs.wanted['audio'],self.inputs.wanted['camera'])
             self.inputs.request('audio',False); self.inputs.request('camera',False)
@@ -198,11 +231,12 @@ class StudioController(QObject):
 
     @property
     def expression(self):
-        if self.manual_expression: return self.manual_expression
-        if self.face['detected']:
-            if self.face['smile'] > .35: return 'happy'
-            if self.face['frown'] > .35: return 'sad'
-            if self.face['surprise'] > .5: return 'surprised'
+        face = self.visual_face if self.motion_source == 'preview' else self.face
+        if self.motion_source != 'preview' and self.manual_expression: return self.manual_expression
+        if face['detected']:
+            if face['smile'] > .35: return 'happy'
+            if face['frown'] > .35: return 'sad'
+            if face['surprise'] > .5: return 'surprised'
         return 'neutral'
 
     def snapshot(self):
@@ -211,7 +245,7 @@ class StudioController(QObject):
                     fps=self.performance['fps'], pixelRatio=self.performance['pixel_ratio'],
                     active=self.render_active, paused=self.paused, capture=self.output_active, background=self.output_color, rotate=self.settings.auto_rotate3d,
                     camera=self.settings.camera3d, cameraRevision=self.camera_revision,
-                    animationEpoch=self.animation_epoch, face=self.face, expressionMapping=self.expression_mapping,
+                    animationEpoch=self.animation_epoch, face=self.visual_face, motionSource=self.motion_source, expressionMapping=self.expression_mapping,
                     expressionPreview=self.expression_preview, gesture=self.gesture_state(), kind=self.mode)
 
     def command(self, action, value=None):
@@ -226,13 +260,17 @@ class StudioController(QObject):
             self.manual_expression = None if value == 'auto' else value
         elif action == 'test':
             self.test_until = time.monotonic()+3
+            self.changed.emit(); return True
         elif action == 'microphone':
             self.toggle_microphone()
+            return True
         else: return False
-        self.defer_save(); self.changed.emit(); return True
+        if action != 'expression': self.defer_save()
+        self.changed.emit(); return True
 
     def switch_mode(self, mode):
         if mode in ('2D','3D','Live2D'):
+            self.motion_preview.stop()
             changed = mode != self.mode
             self.mode = mode
             if mode!='2D': self.store.clear()
@@ -246,6 +284,7 @@ class StudioController(QObject):
         self.changed.emit()
 
     def toggle_tracking(self):
+        self.motion_preview.stop()
         self.paused=False
         self.set_render_active(self.render_active)
         self.inputs.request('camera', not self.inputs.wanted['camera'])
@@ -293,6 +332,7 @@ class StudioController(QObject):
             entry['expressions']=dict(self.preferences.get('expressions2d',{}))
         entry['tuning'] = {key: getattr(self.settings, key) for key in (*PACK_SETTINGS, 'sensitivity', 'smoothing', 'noise_floor')}
         entry['tuning'].update(face_smoothing=self.preferences['face_smoothing'], face_strength=self.preferences['face_strength'], face_neutral=dict(self.preferences['face_neutral']))
+        entry['tuning'].update(motion_config(self.preferences))
         recent=self.preferences.get('recent_avatars',[])
         if not isinstance(recent,list): recent=[]
         identity=entry.get('path') or entry.get('sets',{}).get('idle')
@@ -345,12 +385,13 @@ class StudioController(QObject):
                 if key in tuning: setattr(self.settings, key, getattr(checked, key))
             from avatarcam.desktop.preferences import sanitize_preferences
             prefs = sanitize_preferences(tuning)
-            for key in ('face_smoothing', 'face_strength', 'face_neutral'):
+            for key in ('face_smoothing', 'face_strength', 'face_neutral', 'idle_motion', 'idle_strength'):
                 if key in tuning: self.preferences[key] = prefs[key]
             self.smoother.neutral = dict(self.preferences['face_neutral'])
             self.camera_revision += 1; self.remember_avatar(); self.defer_save(); self.changed.emit()
 
     def use_model(self, path):
+        self.motion_preview.stop()
         self.record_change()
         self.manual_expression=None
         self.renderer_report = {}
@@ -445,6 +486,11 @@ class StudioController(QObject):
                 self.preferences['avatar2d_name']=result['name']
             elif result['settings'].get('expression3d') not in (None,'neutral'):
                 self.manual_expression=result['settings']['expression3d']
+            setup = result.get('studio', {})
+            if setup:
+                self.preferences.update(motion_config(setup))
+                self.preferences['expression_profiles'][self.identity] = expression_config(setup.get('expression_mapping'))
+                self.preferences['expression_profiles'] = dict(list(self.preferences['expression_profiles'].items())[-48:])
             self.camera_revision+=1; self.remember_avatar(); self.changed.emit()
             self.notice.emit('Pacote importado com poses, expressões e enquadramento.')
         self.submit(lambda: import_avatar_pack(path), success)
@@ -454,10 +500,11 @@ class StudioController(QObject):
         sets = {} if self.mode == '3D' else dict(self.sets)
         from copy import deepcopy
         config={key:deepcopy(getattr(self.settings,key)) for key in PACK_SETTINGS}
-        config['expression3d']=self.expression
+        config['expression3d']=self.manual_expression or 'neutral'
         mappings=deepcopy(self.preferences.get('expressions2d',{})) if self.mode=='2D' else {}
         name=self.avatar_name()
-        self.submit(lambda: export_avatar_pack(path, name, sets, config, model, mappings),
+        setup = dict(expression_mapping=deepcopy(self.expression_mapping), **motion_config(self.preferences))
+        self.submit(lambda: export_avatar_pack(path, name, sets, config, model, mappings, setup),
                     lambda _: self.notice.emit('Pacote salvo com sucesso.'), 'Salvando pacote de avatar…')
 
     def tick(self):
@@ -480,6 +527,7 @@ class StudioController(QObject):
                 self.defer_save(); self.notice.emit('Microfone calibrado.')
         sample, self.camera_frame, self.tracking_status, error = self.tracker.latest()
         self.face = self.smoother.update(sample, dt, self.preference('face_smoothing',.55,.1,.9), self.preference('face_strength',1.,.2,2.))
+        self.update_motion(dt, now)
         if error and error != self.error_seen: self.error_seen = error; self.notice.emit(error)
         if not error: self.error_seen = ''
         for future, success in list(self.jobs):
@@ -492,6 +540,7 @@ class StudioController(QObject):
     def close(self):
         if self.closing: return
         self.closing = True; self.timer.stop(); self.save_timer.stop()
+        self.motion_preview.stop()
         self.inputs.close()
         try: self.microphone.stop()
         except Exception: pass

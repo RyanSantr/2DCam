@@ -88,7 +88,7 @@ class CaptureWindow(QMainWindow):
 class StudioWindow(QMainWindow):
     def __init__(self):
         super().__init__(); self.controller=StudioController(); self.capture_window=None
-        self.transparent_output = TransparentOutput(self); self.wizard = None
+        self.transparent_output = TransparentOutput(self); self.wizard = None; self.motion_dialog = None
         self.controller.remember_avatar()
         self.device_signature=-1
         self.avatar3d=None; self.current_destination=None; self.quitting=False
@@ -268,6 +268,13 @@ class StudioWindow(QMainWindow):
         face=group('Rosto',layout); self.camera_button=button('Ligar rastreamento',self.controller.toggle_tracking,True); face.addWidget(self.camera_button)
         self.face_status=label('Câmera desligada','muted',True); face.addWidget(self.face_status)
         face.addWidget(button('Calibrar posição neutra',self.controller.calibrate_face))
+        without_camera=details('Usar sem webcam',layout)
+        self.idle_checkbox=QCheckBox('Movimentos suaves do personagem')
+        self.idle_checkbox.setChecked(self.controller.preferences['idle_motion'])
+        self.idle_checkbox.toggled.connect(lambda value:self.set_preference('idle_motion',value)); without_camera.addWidget(self.idle_checkbox)
+        self.idle_strength_slider=self.add_slider(without_camera,'Intensidade',round(self.controller.preferences['idle_strength']*100),10,150,lambda value:self.set_preference('idle_strength',value/100))
+        without_camera.addWidget(button('Testar movimentos sem câmera',self.open_motion_test))
+        without_camera.addWidget(label('A voz anima a boca. Os movimentos suaves entram quando não há rosto sendo rastreado.','muted',True))
         expressions=group('Expressões',layout); grid=QGridLayout(); self.expression_buttons={}
         for index,(key,name) in enumerate((('auto','Automático'),('neutral','Neutro'),('happy','Feliz'),('angry','Bravo'),('sad','Triste'),('surprised','Surpreso'))):
             btn=button(name,lambda k=key:self.controller.command('expression',k)); btn.setCheckable(True)
@@ -303,7 +310,7 @@ class StudioWindow(QMainWindow):
         assets.addWidget(button('Importar pasta 2D',self.choose_folder))
         packs=details('Pacotes portáteis',layout); packs.addWidget(button('Importar .avatarpack',self.choose_pack))
         packs.addWidget(button('Exportar avatar atual',self.export_pack))
-        packs.addWidget(label('O pacote leva poses, expressões 2D e enquadramento.','muted',True))
+        packs.addWidget(label('O pacote leva poses, vínculos de expressões, movimentos e enquadramento.','muted',True))
         profiles=details('Perfis salvos',layout); self.profile_combo=QComboBox(); profiles.addWidget(self.profile_combo)
         self.refresh_profiles(); self.profile_combo.activated.connect(self.load_profile)
         profiles.addWidget(button('Salvar perfil atual',self.save_profile))
@@ -311,6 +318,7 @@ class StudioWindow(QMainWindow):
 
     def build_tracking_panel(self):
         layout=self.panel('Câmera','Selecione e calibre o rastreamento.')
+        layout.addWidget(button('Testar movimentos sem webcam',self.open_motion_test))
         camera=group('Câmera',layout); self.camera_devices=QComboBox()
         self.camera_devices.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
         self.camera_devices.setMinimumContentsLength(12)
@@ -476,7 +484,7 @@ class StudioWindow(QMainWindow):
         QMessageBox.information(self,'Capturar no OBS','1. Abra a saída do avatar.\n2. No OBS, adicione Captura de janela.\n3. Selecione 2DCam - Avatar.\n4. Use o método Windows 10 (1903 ou superior) se Automático falhar.\n5. Desative Capturar cursor e ative Área do cliente.\n6. Adicione o filtro Chroma Key para remover o fundo verde/azul.\n\nMantenha a janela de saída aberta e sem minimizar. Para poupar recursos, use o modo Econômico e oculte os controles.\n\nA captura depende do Windows, da GPU e do OBS. Guia oficial: obsproject.com/kb/window-capture-sources')
     def show_notice(self,text): self.statusBar().showMessage(text,12000)
     def set_preference(self,key,value):
-        if key in ('face_smoothing','face_strength') and not any(slider.isSliderDown() for slider in self.findChildren(QSlider)): self.controller.record_change()
+        if key in ('face_smoothing','face_strength','idle_motion','idle_strength') and not any(slider.isSliderDown() for slider in self.findChildren(QSlider)): self.controller.record_change()
         self.controller.preferences[key]=value; self.controller.defer_save(); self.controller.changed.emit()
     def set_setting(self,key,value):
         if not any(slider.isSliderDown() for slider in self.findChildren(QSlider)): self.controller.record_change()
@@ -506,6 +514,14 @@ class StudioWindow(QMainWindow):
         finally:
             if global_enabled: self.configure_live_shortcuts(True)
 
+    def open_motion_test(self):
+        if self.motion_dialog:
+            self.motion_dialog.show(); self.motion_dialog.raise_(); return
+        from avatarcam.desktop.dialogs import MotionDialog
+        self.motion_dialog=MotionDialog(self); self.motion_dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        self.motion_dialog.finished.connect(lambda _:setattr(self,'motion_dialog',None))
+        self.motion_dialog.show(); self.motion_dialog.refresh()
+
     def edit_poses(self):
         from avatarcam.desktop.dialogs import PoseEditor
         dialog=PoseEditor(self); dialog.exec(); dialog.deleteLater()
@@ -532,7 +548,7 @@ class StudioWindow(QMainWindow):
         c=self.controller; c.record_change(); defaults=Settings()
         for key in ('avatar_scale','avatar_offset_x','avatar_offset_y','avatar_rotation','camera3d','sensitivity','smoothing','noise_floor'):
             setattr(c.settings,key,getattr(defaults,key))
-        c.preferences.update(face_smoothing=.55,face_strength=1.)
+        c.preferences.update(face_smoothing=.55,face_strength=1.,idle_motion=True,idle_strength=.5)
         c.preferences['face_neutral']=dict(yaw=0.,pitch=0.,roll=0.); c.smoother.neutral=dict(c.preferences['face_neutral'])
         c.preferences['expression_profiles'].pop(c.identity,None)
         c.manual_expression=None; c.camera_revision+=1; c.remember_avatar(); c.defer_save(); c.changed.emit()
@@ -623,7 +639,10 @@ class StudioWindow(QMainWindow):
         self.voice_status.setText('Voz detectada' if c.speaking else 'Ouvindo microfone' if c.microphone.is_running else c.inputs.status['audio'] if c.inputs.wanted['audio'] else 'Microfone desligado')
         self.camera_button.setText('Desligar rastreamento' if c.inputs.wanted['camera'] else 'Ligar rastreamento')
         status=c.inputs.status['camera'] or c.tracking_status
-        self.face_status.setText(status); self.tracking_detail.setText(status)
+        self.tracking_detail.setText(status)
+        if c.motion_source=='preview': status='Testando movimentos sem câmera'
+        elif not c.inputs.wanted['camera'] and c.motion_source=='idle': status='Sem câmera · movimentos suaves'
+        self.face_status.setText(status)
         for key,btn in self.expression_buttons.items(): btn.setChecked(key==(c.manual_expression or 'auto'))
         if c.renderer_report.get('loaded') and c.mode!='2D':
             supported=c.renderer_report.get('expressions',[])
@@ -632,7 +651,7 @@ class StudioWindow(QMainWindow):
                 btn.setToolTip('' if btn.isEnabled() else 'Essa expressão não está incluída neste modelo.')
         else:
             for btn in self.expression_buttons.values(): btn.setEnabled(True)
-        face=c.face
+        face=c.visual_face
         self.face_metrics.setText(f"Boca {face['jaw']:.0%}  ·  Olhos {max(face['blinkLeft'],face['blinkRight']):.0%}\nCabeça: {face['yaw']*57.3:.0f}° / {face['pitch']*57.3:.0f}°")
         if self.panels.currentIndex()==2 and self.show_camera.isChecked() and c.camera_frame is not None:
             if self.last_camera_frame is not c.camera_frame:
@@ -644,11 +663,12 @@ class StudioWindow(QMainWindow):
             self.last_camera_frame=None
             self.camera_image.clear(); self.camera_image.setText('Prévia oculta' if c.tracker.running else 'Câmera desligada')
         for slider,value in ((self.sensitivity_slider,c.settings.sensitivity),(self.scale_slider,c.settings.avatar_scale),
-                             (self.face_smoothing_slider,c.preferences['face_smoothing']),(self.face_strength_slider,c.preferences['face_strength'])):
+                             (self.face_smoothing_slider,c.preferences['face_smoothing']),(self.face_strength_slider,c.preferences['face_strength']),
+                             (self.idle_strength_slider,c.preferences['idle_strength'])):
             number=round(value*100)
             if not slider.isSliderDown() and slider.value()!=number:
                 slider.blockSignals(True); slider.setValue(number); slider.blockSignals(False)
-        for widget,value in ((self.rotate,c.settings.auto_rotate3d),(self.pet,c.settings.pet_enabled)):
+        for widget,value in ((self.rotate,c.settings.auto_rotate3d),(self.pet,c.settings.pet_enabled),(self.idle_checkbox,c.preferences['idle_motion'])):
             if widget.isChecked()!=value:
                 widget.blockSignals(True); widget.setChecked(value); widget.blockSignals(False)
 
@@ -834,6 +854,7 @@ class StudioWindow(QMainWindow):
         if urls and urls[0].isLocalFile(): self.import_path(urls[0].toLocalFile())
     def closeEvent(self,event):
         self.quitting=True; self.stats_timer.stop(); self.sync_timer.stop(); self.live_shortcuts.close()
+        if self.motion_dialog: self.motion_dialog.close()
         self.transparent_output.stop()
         if self.capture_window: self.capture_window.close()
         self.controller.close()

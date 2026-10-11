@@ -9,7 +9,7 @@ from avatarcam.desktop.preferences import sanitize_preferences
 SETTINGS = ('avatar_scale', 'avatar_offset_x', 'avatar_offset_y', 'avatar_rotation', 'camera3d',
             'sensitivity', 'smoothing', 'noise_floor', 'speech_mode', 'mouth_hold_ticks', 'animation_fps',
             'auto_rotate3d', 'pet_enabled', 'pet_size', 'pet_offset_x', 'pet_offset_y')
-PREFERENCES = ('expressions2d', 'avatar2d_name', 'face_smoothing', 'face_strength', 'expression_profiles', 'face_neutral')
+PREFERENCES = ('expressions2d', 'avatar2d_name', 'face_smoothing', 'face_strength', 'expression_profiles', 'face_neutral', 'idle_motion', 'idle_strength')
 
 
 def capture_state(controller):

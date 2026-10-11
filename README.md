@@ -4,7 +4,7 @@ Aplicativo para Windows com avatares 2D e 3D, resposta à voz e rastreamento fac
 
 ## Baixar e abrir
 
-**[Baixar 2DCam Studio 3.6 para Windows](https://github.com/RyanSantr/2DCam/releases/download/v3.6.0/2DCam-Studio-3.6.exe)**
+**[Baixar 2DCam Studio 3.7 para Windows](https://github.com/RyanSantr/2DCam/releases/download/v3.7.0/2DCam-Studio-3.7.exe)**
 
 Abra o EXE. Não precisa instalar Python nem abrir um navegador. Na primeira abertura, aguarde a preparação dos componentes; as próximas usam a cópia já preparada. Requer Windows 10/11 de 64 bits e os componentes .NET Framework do Windows.
 
@@ -17,6 +17,10 @@ A personagem 3D de exemplo acompanha o app. Câmera e microfone começam desliga
 3. Ajuste o enquadramento com o mouse e a roda. Salve a posição e abra **Saída OBS**.
 
 Na Biblioteca, você pode montar poses 2D, organizar favoritos e salvar perfis. Em Avatar, pode preparar o personagem, editar expressões disponíveis e usar gestos. **Ctrl+Z** desfaz alterações; **F8** mostra os controles e **F9** pausa.
+
+**Sem webcam:** ative o microfone e use **Avatar → Usar sem webcam** para ajustar os movimentos suaves. **Testar movimentos sem câmera** permite conferir cabeça, olhar, boca e piscar; o teste automático dura 12 segundos e encerra sozinho. Ele não liga dispositivos. Fechar a prévia devolve o personagem ao funcionamento normal.
+
+Os pacotes `.avatarpack` também preservam vínculos personalizados de expressões 3D e ajustes de movimento. Pacotes antigos continuam aceitos; use a versão 3.7 ou posterior para recuperar esses novos ajustes.
 
 Para consumir menos recursos durante a transmissão, selecione **Econômico**, oculte a prévia da câmera e use uma saída de 640 × 360 ou 960 × 540. O consumo depende do modelo e do computador.
 
@@ -39,7 +43,7 @@ Personagens e configurações ficam em `%USERPROFILE%\.avatarcam_2d`. Os compone
 - `web3d-build/`: construção do renderizador incorporado.
 - `third-party-licenses/`: licenças dos componentes e modelos incluídos.
 
-No Windows, com **Python 3.12 x64**, execute `scripts/run.bat`. Para gerar `dist/2DCam-Studio-3.6.exe`, execute `scripts/build_exe.bat`.
+No Windows, com **Python 3.12 x64**, execute `scripts/run.bat`. Para gerar `dist/2DCam-Studio-3.7.exe`, execute `scripts/build_exe.bat`.
 
 Testes: `.venv\Scripts\python -m unittest discover -s tests -v`. Para alterar o renderizador, use Node 22 e execute `npm ci --ignore-scripts` e `npm run build` dentro de `web3d-build`. O renderizador pronto já acompanha o código.
 

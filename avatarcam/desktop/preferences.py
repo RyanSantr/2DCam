@@ -29,6 +29,8 @@ def sanitize_preferences(value):
     result['hide_controls'] = result.get('hide_controls') is True
     result['output_on_top'] = result.get('output_on_top') is True
     result['global_shortcuts'] = result.get('global_shortcuts') is True
+    from avatarcam.core.avatar_config import motion_config
+    result.update(motion_config(result))
     from avatarcam.desktop.shortcuts import validate_bindings
     try: result['shortcut_bindings'] = validate_bindings(result.get('shortcut_bindings', {}))
     except ValueError: result['shortcut_bindings'] = validate_bindings({})
@@ -85,6 +87,7 @@ def sanitize_preferences(value):
             checked = Settings.from_dict(entry['tuning'])
             item['tuning'] = {key: getattr(checked, key) for key in fields if key in entry['tuning']}
             item['tuning']['face_neutral'] = neutral_pose(entry['tuning'].get('face_neutral'))
+            item['tuning'].update(motion_config(entry['tuning']))
             for key, low, high, default in (('face_smoothing', .1, .9, .55), ('face_strength', .2, 2., 1.)):
                 value = entry['tuning'].get(key, default)
                 item['tuning'][key] = max(low,min(high,value)) if isinstance(value,(float,int)) and not isinstance(value,bool) and math.isfinite(value) else default
