@@ -1,4 +1,4 @@
-# 2DCam Studio 3.4
+# 2DCam Studio 3.5
 
 [![Testes Windows](https://github.com/RyanSantr/2DCam/actions/workflows/tests.yml/badge.svg)](https://github.com/RyanSantr/2DCam/actions/workflows/tests.yml)
 
@@ -27,6 +27,22 @@ Abrir novamente traz os controles da instância existente para a frente. Cada bi
 
 Para começar: importe o personagem, ative o microfone ou **Ligar rastreamento**, olhe para a câmera e **Calibrar posição neutra**. Ajuste o enquadramento com o mouse. Use a roda para aproximar; no 3D, o botão direito move a câmera. Salve a posição antes de abrir a saída.
 
+## Preparar e editar personagens
+
+Após importar PNG/GIF ou VRM/GLB, o guia mostra os recursos encontrados, ajuda a calibrar as entradas e salva os ajustes para o personagem. **Avatar → Preparar personagem** abre o guia novamente. A câmera e o microfone só ligam quando você clica; calibrar rosto salva a posição neutra na biblioteca.
+
+**Biblioteca → Poses e expressões 2D → Montar personagem visualmente:** arraste PNG/GIF para Parado, Falando, Piscando e emoções. Os botões de teste mostram cada pose, incluindo GIF animado. Parado é obrigatório; salvar copia os recursos e só substitui o personagem após validar a operação inteira. Imagens de uma sequência podem ser selecionadas juntas; a prévia do editor mostra o primeiro arquivo dessa sequência.
+
+**Avatar → Editar expressões do modelo:** escolha um recurso existente para cada emoção, boca ou piscar, teste a intensidade e salve. Recursos de VRM e formas de GLB aparecem conforme o modelo. A configuração vale para aquele personagem e pode ser guardada em perfil. O editor não cria formas faciais ausentes nem modifica o arquivo original. Os pacotes 3D ainda não levam esses novos vínculos personalizados; para preservá-los neste computador, use a biblioteca ou um perfil.
+
+**Avatar → Ações do personagem:** acenar, concordar, negar e comemorar. VRM usa os ossos disponíveis; GLB admite movimentos do objeto; PNG/GIF usa movimento da imagem. Ações incompatíveis ficam desativadas. Os gestos se misturam ao rastreamento e terminam após 2,5 segundos. Atalhos padrão: Ctrl+Alt+7/8/9/0; podem ser personalizados.
+
+**Editar → Desfazer/Refazer**, Ctrl+Z e Ctrl+Shift+Z restauram até 20 alterações de poses, vínculos, enquadramento e ajustes. O histórico guarda apenas configurações, sem duplicar modelos ou imagens. Restaurar ajustes do avatar também pode ser desfeito. O histórico é da sessão atual.
+
+Se o app fechar inesperadamente, a próxima abertura oferece recuperar personagem e configurações do último salvamento. Câmera, microfone, saída transparente e janela OBS permanecem desligados. Arquivos ausentes impedem a recuperação sem substituir o personagem atual.
+
+**Configurações → Verificar funcionamento** mostra problemas nas funções em uso com um botão para ajustar. Entradas desligadas não geram alertas. Entrada de áudio baixa é um aviso condicional: se você estiver falando, confira seleção/sensibilidade; silêncio normal também pode produzi-lo.
+
 ## Dispositivos e reconexão
 
 A seleção mostra nomes de microfones e câmeras disponíveis. Use **Câmera → Atualizar dispositivos** após conectar um USB. Câmeras são enumeradas pelo mesmo backend da captura; se o nome não puder ser lido, permanece a seleção por número. A enumeração não inicia a captura.
@@ -40,6 +56,8 @@ O app tenta recuperar somente câmera/microfone que você tenha ligado. A espera
 | Econômico | 24 FPS | 12 leituras/s | 320 × 240 | 32 + 16 MiB |
 | Equilibrado | 30 FPS | 20 leituras/s | 480 × 360 | 64 + 24 MiB |
 | Qualidade | 60 FPS | 30 leituras/s | 640 × 480 | 96 + 32 MiB |
+
+O modo **Automático** começa em Equilibrado, reduz qualidade após três amostras de lentidão e pode subir após 30 segundos de estabilidade. Considera a taxa do renderizador e atrasos da interface; não tenta medir a carga de outros apps nem garante uma taxa de FPS. Pausar/ocultar interrompe a decisão. Para manter a qualidade fixa, escolha um dos três modos da tabela.
 
 São limites e metas, não uma promessa de FPS. GPU, iluminação, câmera e complexidade do modelo afetam o resultado. O orçamento das imagens não limita toda a memória do aplicativo; modelos 3D, detector facial e componentes nativos usam memória adicional.
 
@@ -59,11 +77,22 @@ O app carrega apenas um avatar 3D. A saída reutiliza a mesma superfície do edi
 
 Mantenha a saída aberta e sem minimizar. Os controles do editor podem ficar ocultos. Clique com o botão direito na área vazia da saída para mostrar os controles, pausar ou fechar. Fechar a saída devolve o avatar ao editor. Não é necessário criar uma Fonte de navegador.
 
-Tamanhos horizontais: 640 × 360, 960 × 540, 1280 × 720 e 1920 × 1080. Verticais: 720 × 1280 e 1080 × 1920. A opção **Saída sempre no topo** mantém o avatar à vista. Fundos: verde, azul ou cinza. **Recarregar prévia 3D** recupera uma renderização interrompida. O app não instala driver de câmera virtual nem oferece alpha transparente diretamente ao OBS.
+Tamanhos horizontais: 640 × 360, 960 × 540, 1280 × 720 e 1920 × 1080. Verticais: 720 × 1280 e 1080 × 1920. A opção **Saída sempre no topo** mantém o avatar à vista. Fundos: verde, azul ou cinza. **Recarregar prévia 3D** recupera uma renderização interrompida. O app não instala driver de câmera virtual. A opção Spout2 abaixo oferece alpha; Captura de janela continua usando Chroma Key.
 
 A captura foi exercitada no OBS 32.2.2 / Windows 11 com Windows Graphics Capture. Outras versões e dispositivos exigem verificação. Em computadores com duas GPUs, o OBS e o app podem exigir ajustes nas preferências gráficas do Windows.
 
 Referências oficiais: [Captura de janela](https://obsproject.com/kb/window-capture-sources) e [Seleção de GPU](https://obsproject.com/kb/gpu-selection-guide).
+
+### Saída transparente com Spout2
+
+1. Instale o [complemento oficial Spout2 para OBS](https://github.com/Off-World-Live/obs-spout2-plugin/releases) no seu OBS e reinicie-o.
+2. No 2DCam, clique **Configurações → Ligar saída transparente**.
+3. No OBS, adicione **Captura Spout2**, selecione **2DCam - Transparente** e escolha **Alpha** no modo de composição.
+4. Não adicione Chroma Key a essa fonte. O fundo já contém transparência.
+
+A transmissão é produzida pelo app; não é necessário outro app para controlar o personagem. O complemento pertence ao OBS e não é instalado silenciosamente pelo 2DCam. A saída trabalha em até 640 pixels no maior lado e 24 tentativas por segundo; a frequência real depende da GPU e do renderizador. Uma única imagem/captura fica pendente por vez. Ler/exportar pixels gera trabalho adicional; para o menor consumo, mantenha essa opção desligada e use Captura de janela. Outra janela cobrindo o app não interrompe a transmissão. Pausar/minimizar a janela que renderiza suspende novos envios. Desligar a saída libera o transmissor. GPUs/drivers e uso de GPUs diferentes podem impedir o compartilhamento.
+
+Recepção alpha validada em 2D/3D com OBS 32.2.2 e Spout2 1.12.0. Não promete compatibilidade universal.
 
 ## Formatos
 
@@ -71,11 +100,11 @@ Referências oficiais: [Captura de janela](https://obsproject.com/kb/window-capt
 - **VRM:** cabeça, olhos, boca e expressões conforme os recursos presentes no modelo; física do cabelo quando disponível.
 - **GLB:** visualização e animação incorporada. Boca e olhos dependem dos morphs; orientação parcial do objeto acompanha a cabeça.
 
-VRM/GLB devem ser autocontidos, com recursos incorporados, sem Draco/Meshopt/KTX2. Limite do arquivo: 128 MiB. Imagens são redimensionadas no cache conforme o modo; animações aceitam até 256 frames e devem caber no orçamento de imagens. Não importa Live2D Cubism, FBX ou OBJ.
+VRM/GLB devem ser autocontidos, com recursos incorporados, sem Draco/Meshopt/KTX2. Limite do arquivo: 128 MiB. Imagens são redimensionadas no cache conforme o modo; animações aceitam até 256 frames e devem caber no orçamento de imagens. FBX e OBJ não são importados. O adaptador Live2D está preparado no código, mas esta distribuição não inclui o Cubism Core nem o renderizador Cubism compilado. A publicação de um app de rastreamento requer aprovação da Live2D.
 
 ## Biblioteca e privacidade
 
-Arquivos importados são copiados para a biblioteca local. A biblioteca guarda até 48 avatares; favoritos têm prioridade ao atingir o limite. Recentes guardam até 12. Renomear altera apenas o nome exibido. Miniaturas 3D são geradas a partir da prévia do avatar, quando visível, em até 96 × 96; não capturam a imagem da câmera. Perfis guardam poses, expressões 2D, pet, modelo, enquadramento, ajustes de voz/movimento, desempenho e saída. Carregar um perfil substitui as poses vazias corretamente; um arquivo obrigatório ausente mantém o avatar atual. É possível excluir um perfil sem apagar as imagens. Perfis antigos continuam disponíveis.
+Arquivos importados são copiados para a biblioteca local. A biblioteca guarda até 48 avatares; favoritos têm prioridade ao atingir o limite. Recentes guardam até 12. Renomear altera apenas o nome exibido. Miniaturas 3D são geradas a partir da prévia do avatar, quando visível, em até 96 × 96; não capturam a imagem da câmera. Perfis guardam poses, expressões 2D, vínculos 3D, calibração neutra, pet, modelo, enquadramento, ajustes de voz/movimento, desempenho e saída. Carregar um perfil substitui as poses vazias corretamente; um arquivo obrigatório ausente mantém o avatar atual. É possível excluir um perfil sem apagar as imagens. Perfis antigos continuam disponíveis.
 
 Pacotes .avatarpack levam imagens, poses, expressões 2D, modelo 3D e enquadramento. Os arquivos são extraídos em blocos pequenos para reduzir picos de memória. A importação mantém seus dispositivos e modo de desempenho. Pacotes antigos continuam aceitos; pacotes novos com expressões exigem a versão 3.3 ou posterior. Perfis guardam caminhos locais e não são pacotes portáteis. Dados locais ficam em `%USERPROFILE%\.avatarcam_2d`.
 

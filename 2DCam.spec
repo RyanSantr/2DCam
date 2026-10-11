@@ -5,7 +5,7 @@ root = Path(SPECPATH)
 datas = [(str(root/'avatarcam/assets'), 'avatarcam/assets'), (str(root/'avatarcam/web3d'), 'avatarcam/web3d')]
 datas += collect_data_files('mediapipe')
 a = Analysis([str(root/'app.py')], pathex=[str(root)], binaries=[], datas=datas,
-    hiddenimports=['webrtcvad','_webrtcvad','mediapipe.tasks.python.vision.face_landmarker'],
+    hiddenimports=['webrtcvad','_webrtcvad','mediapipe.tasks.python.vision.face_landmarker','SpoutGL'],
     hookspath=[str(root/'scripts/hooks')], hooksconfig={'matplotlib': {'backends': ['Agg']}},
     runtime_hooks=[], excludes=['jax','jaxlib','tensorflow','torch','IPython','pytest','PyQt5','PyQt6'],
     noarchive=False, optimize=0)

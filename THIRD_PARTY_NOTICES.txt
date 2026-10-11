@@ -224,3 +224,6 @@ Nenhuma imagem de teste de pessoa e incluida no pacote.
 3.1: psutil 7.0.0, BSD 3-Clause. https://github.com/giampaolo/psutil
 Licença integral: third-party-licenses/psutil-LICENSE.txt.
 OBS usado apenas para teste, não distribuído neste pacote.
+
+3.5: SpoutGL 0.1.1 (BSD-3-Clause), baseado no SDK Spout. Fonte: https://github.com/jlai/Python-SpoutGL e https://github.com/leadedge/Spout2. Licenças acompanham third-party-licenses/. O complemento OBS Spout2 (GPL-2.0) é externo e não é distribuído nem instalado pelo app.
+O adaptador Live2D preparado referencia pixi-live2d-display 0.4.0 (MIT) e PixiJS 6.5.10 (MIT). Cubism Core e o renderizador Live2D compilado não fazem parte desta distribuição. Publicação da integração Cubism depende de autorização: https://www.live2d.com/en/sdk/license/.

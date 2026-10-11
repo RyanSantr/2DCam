@@ -1,6 +1,7 @@
 """Renderizador incorporado; nao abre navegador nem servidor HTTP."""
 from pathlib import Path
 import json
+import os
 from PySide6.QtCore import QObject, Slot, QUrl, QFile, QIODevice, Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWebChannel import QWebChannel
@@ -13,6 +14,11 @@ WEB = Path(__file__).resolve().parents[1] / 'web3d'
 
 
 def register_scheme():
+    # A saída de live precisa continuar quando o OBS cobre a janela.
+    # Pausa/minimização e limites de FPS continuam sob controle do app.
+    flags = os.environ.get('QTWEBENGINE_CHROMIUM_FLAGS', '')
+    if '--disable-backgrounding-occluded-windows' not in flags.split():
+        os.environ['QTWEBENGINE_CHROMIUM_FLAGS'] = (flags + ' --disable-backgrounding-occluded-windows').strip()
     scheme = QWebEngineUrlScheme(b'avatarcam')
     scheme.setSyntax(QWebEngineUrlScheme.Syntax.HostAndPort)
     scheme.setDefaultPort(443)
@@ -34,8 +40,17 @@ class Assets(QWebEngineUrlSchemeHandler):
         path = job.requestUrl().path().lstrip('/')
         if job.requestUrl().host() != 'app' or job.requestMethod() != b'GET':
             job.fail(QWebEngineUrlRequestJob.Error.RequestDenied); return
-        if path in ('embedded.html', 'viewer.js', 'style.css'):
+        if path in ('embedded.html', 'viewer.js', 'style.css', 'live2d.html', 'live2d.js'):
             target = WEB / path
+        elif path == 'cubism-core.js':
+            from avatarcam.desktop.live2d import core_path
+            target = core_path()
+        elif path.startswith('live2d/') and self.controller.mode == 'Live2D':
+            from urllib.parse import unquote
+            from avatarcam.desktop.live2d import local_resource
+            try: target = local_resource(Path(self.controller.model_path).parent, unquote(path[len('live2d/'):]))
+            except ValueError:
+                job.fail(QWebEngineUrlRequestJob.Error.RequestDenied); return
         elif path.startswith('model/') and path == self.controller.model_route():
             target = Path(self.controller.model_path)
         else:
@@ -81,6 +96,7 @@ class Page(QWebEnginePage):
 class EmbeddedAvatar(QWebEngineView):
     def __init__(self, controller, capture=False, parent=None):
         super().__init__(parent)
+        self.kind = controller.mode
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self.show_output_menu)
         self.profile = QWebEngineProfile(self)
@@ -97,7 +113,8 @@ class EmbeddedAvatar(QWebEngineView):
         self.channel.registerObject('studio', self.bridge)
         page.setWebChannel(self.channel)
         self.released=False
-        self.load(QUrl('avatarcam://app/embedded.html?embedded=1'+('&capture=1' if capture else '')))
+        document = 'live2d.html' if self.kind == 'Live2D' else 'embedded.html'
+        self.load(QUrl('avatarcam://app/'+document+'?embedded=1'+('&capture=1' if capture else '')))
 
     def show_output_menu(self, position):
         window=self.window()

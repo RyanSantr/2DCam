@@ -17,6 +17,8 @@ from avatarcam.audio.microphone import MicrophoneInput
 from avatarcam.tracking.face import FaceTracker, FaceSmoother, empty_face
 from avatarcam.desktop.inputs import InputRecovery
 from avatarcam.desktop.library import avatar_id, update_library, clean_name
+from avatarcam.desktop.creative import History, AdaptiveQuality, GESTURES, expression_config, helpful_issues
+from avatarcam.desktop.recovery import capture_state, apply_state, SessionRecovery
 
 ASSETS = Path(__file__).resolve().parents[1] / 'assets'
 PACK_SETTINGS = ('avatar_scale','avatar_offset_x','avatar_offset_y','avatar_rotation','animation_fps','camera3d',
@@ -26,6 +28,7 @@ PACK_SETTINGS = ('avatar_scale','avatar_offset_x','avatar_offset_y','avatar_rota
 class StudioController(QObject):
     changed = Signal()
     notice = Signal(str)
+    imported = Signal()
 
     def __init__(self):
         super().__init__()
@@ -37,10 +40,14 @@ class StudioController(QObject):
         from avatarcam.desktop.preferences import sanitize_preferences
         self.preferences = sanitize_preferences(self.preferences)
         self.mode = self.preferences.get('mode', '3D')
-        if self.mode not in ('2D','3D'): self.mode = '3D'
+        if self.mode not in ('2D','3D','Live2D'): self.mode = '3D'
         self.model_path = self.settings.avatar3d_path
         if not self.model_path or not Path(self.model_path).is_file():
             self.model_path = str(ASSETS/'AvatarHumanoide.vrm')
+        if self.mode == 'Live2D':
+            from avatarcam.desktop.live2d import runtime_available
+            if not runtime_available():
+                self.mode = '3D'; self.model_path = str(ASSETS/'AvatarHumanoide.vrm')
         self.settings.avatar3d_path = self.model_path
         self.store = AssetStore()
         demo = ASSETS/'StudioBot2D'
@@ -54,10 +61,15 @@ class StudioController(QObject):
         self.speech = SpeechDetector(self.settings.sensitivity, self.settings.smoothing, self.settings.mouth_hold_ticks)
         self.output_active=False; self.render_active=True; self.paused=False; self.resume_inputs=(False,False)
         self.tracker = FaceTracker(); self.smoother = FaceSmoother(); self.face = empty_face()
+        self.smoother.neutral = dict(self.preferences['face_neutral'])
         self.level = 0.; self.speaking = False; self.tracking_status = 'Câmera desligada'; self.error_seen = ''
         self.test_until = 0.; self.calibration_until = 0.; self.noise_samples = []
         self.camera_revision = 0; self.animation_epoch = time.time()
         self.library_revision=0
+        self.history = History(); self.adaptive = AdaptiveQuality(); self.tick_lag = 0.; self.quiet_since = None
+        self.gesture = None; self.gesture_at = 0.; self.expression_preview = None
+        self.recovery = SessionRecovery(APP_DIR); self.recovery_started = False
+        self.spout_error = ''; self.transparent_active = False
         self.manual_expression = None; self.renderer_report = {}; self.camera_frame = None
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='ImportAvatar')
         self.inputs = InputRecovery(self)
@@ -71,14 +83,71 @@ class StudioController(QObject):
         return {'green':'#00ff00','blue':'#0000ff','dark':'#202124'}.get(self.preferences.get('output_background'),'#00ff00')
 
     def set_performance(self, key, save=True):
-        if not isinstance(key,str) or key not in PRESETS: key='balanced'
-        self.preferences['performance']=key; self.performance=preset(key)
+        if not isinstance(key,str) or key not in (*PRESETS, 'auto'): key='balanced'
+        self.preferences['performance']=key
+        self.adaptive.reset()
+        self.apply_performance('balanced' if key == 'auto' else key)
+        if save: self.defer_save(); self.changed.emit()
+
+    def apply_performance(self, key):
+        self.performance=preset(key)
         self.settings.fps3d=self.performance['fps']
         self.timer.setInterval(round(1000/min(30,self.performance['fps'])))
         self.store.configure(self.performance['cache_mb']*1048576,self.performance['image_side'])
         self.tracker.configure(self.performance['tracking_fps'],self.performance['camera_width'],self.performance['camera_height'],self.tracker.preview_enabled)
         self.set_render_active(self.render_active)
-        if save: self.defer_save(); self.changed.emit()
+
+    def adapt_performance(self, now):
+        if self.preferences['performance'] != 'auto': return
+        fps = self.renderer_report.get('fps') if self.mode != '2D' and self.renderer_report.get('loaded') else None
+        key = self.adaptive.sample(now, fps, self.performance['fps'], self.tick_lag,
+                                   self.render_active and not self.paused and (self.mode == '2D' or self.renderer_report.get('loaded', False)))
+        if key:
+            self.apply_performance(key); self.changed.emit()
+            self.notice.emit('Desempenho automático: ' + self.performance['name'])
+
+    @property
+    def identity(self): return avatar_id(dict(mode=self.mode, path=self.model_path, sets=self.sets))
+
+    @property
+    def expression_mapping(self): return self.preferences['expression_profiles'].get(self.identity, {})
+
+    def set_expression_mapping(self, mapping):
+        self.record_change(); self.preferences['expression_profiles'][self.identity] = expression_config(mapping)
+        self.preferences['expression_profiles'] = dict(list(self.preferences['expression_profiles'].items())[-48:])
+        self.defer_save(); self.changed.emit()
+
+    def record_change(self): self.history.push(capture_state(self))
+
+    def travel_history(self, redo=False):
+        old = capture_state(self)
+        state = self.history.forward(old) if redo else self.history.back(old)
+        if state is None: return False
+        try: apply_state(self, state)
+        except ValueError as error:
+            # Mantém a operação no histórico se um arquivo ficou indisponível.
+            if redo: self.history.undo.pop(); self.history.redo.append(state)
+            else: self.history.redo.pop(); self.history.undo.append(state)
+            self.notice.emit(str(error)); return False
+        self.notice.emit('Alteração refeita.' if redo else 'Alteração desfeita.'); self.changed.emit(); return True
+
+    def play_gesture(self, key):
+        if key not in GESTURES or self.paused: return False
+        if self.mode != '2D' and key not in self.renderer_report.get('gestures', []):
+            self.notice.emit('Esta ação não está disponível neste personagem.'); return False
+        self.gesture = key; self.gesture_at = time.monotonic(); self.changed.emit(); return True
+
+    def gesture_state(self):
+        progress = (time.monotonic() - self.gesture_at) / 2.5
+        return dict(name=self.gesture, progress=progress) if self.gesture and 0 <= progress <= 1 else None
+
+    def issues(self): return helpful_issues(self)
+
+    def start_recovery(self, restore=False):
+        if restore and self.recovery.previous:
+            try: apply_state(self, self.recovery.previous); self.notice.emit('Sessão recuperada. Entradas permanecem desligadas.')
+            except ValueError as error: self.notice.emit(str(error))
+        self.recovery_started = True; self.recovery.checkpoint(capture_state(self))
 
     def toggle_pause(self):
         if not self.paused:
@@ -107,6 +176,7 @@ class StudioController(QObject):
         self.save_timer.start(400)
 
     def save(self):
+        self.remember_avatar()
         self.preferences['mode'] = self.mode
         self.settings.avatar3d_path = self.model_path
         self.settings.idle_images = self.sets['idle']; self.settings.speaking_images = self.sets['talk']
@@ -114,11 +184,13 @@ class StudioController(QObject):
         self.settings.pet_images = self.sets['pet']; self.settings.pet_speaking_images = self.sets['pet_talk']
         self.settings.save()
         atomic_write_text(APP_DIR/'studio-desktop.json', json.dumps(self.preferences, indent=2, ensure_ascii=False))
+        if self.recovery_started and not self.closing: self.recovery.checkpoint(capture_state(self))
 
     def model_route(self):
         path = Path(self.model_path)
         if not path.is_file(): return ''
         stat = path.stat()
+        if self.mode == 'Live2D': return 'live2d/' + path.name
         return f'model/{stat.st_mtime_ns}-{stat.st_size}/{path.name}'
 
     @property
@@ -136,12 +208,15 @@ class StudioController(QObject):
                     fps=self.performance['fps'], pixelRatio=self.performance['pixel_ratio'],
                     active=self.render_active, paused=self.paused, capture=self.output_active, background=self.output_color, rotate=self.settings.auto_rotate3d,
                     camera=self.settings.camera3d, cameraRevision=self.camera_revision,
-                    animationEpoch=self.animation_epoch, face=self.face)
+                    animationEpoch=self.animation_epoch, face=self.face, expressionMapping=self.expression_mapping,
+                    expressionPreview=self.expression_preview, gesture=self.gesture_state(), kind=self.mode)
 
     def command(self, action, value=None):
         if action == 'camera':
+            self.record_change()
             self.settings.camera3d = Settings.from_dict({'camera3d': value}).camera3d
         elif action == 'reset_camera':
+            self.record_change()
             self.settings.camera3d = None; self.camera_revision += 1
         elif action == 'expression':
             if value not in ('auto','neutral','happy','angry','sad','relaxed','surprised'): return False
@@ -154,10 +229,11 @@ class StudioController(QObject):
         self.defer_save(); self.changed.emit(); return True
 
     def switch_mode(self, mode):
-        if mode in ('2D','3D'):
+        if mode in ('2D','3D','Live2D'):
+            changed = mode != self.mode
             self.mode = mode
-            if mode=='3D': self.store.clear()
-            self.renderer_report={}
+            if mode!='2D': self.store.clear()
+            if changed: self.renderer_report={}; self.gesture=None
             self.defer_save(); self.changed.emit()
 
     def toggle_microphone(self):
@@ -170,15 +246,22 @@ class StudioController(QObject):
         self.paused=False
         self.set_render_active(self.render_active)
         self.inputs.request('camera', not self.inputs.wanted['camera'])
-        if not self.inputs.wanted['camera']: self.face = empty_face(); self.smoother = FaceSmoother()
+        if not self.inputs.wanted['camera']:
+            self.face = empty_face(); self.smoother = FaceSmoother()
+            self.smoother.neutral = dict(self.preferences['face_neutral'])
         self.changed.emit()
 
     def calibrate_face(self):
-        self.notice.emit('Posição neutra calibrada.' if self.smoother.calibrate() else 'Ligue a câmera e posicione o rosto antes de calibrar.')
+        if not self.smoother.values['detected']:
+            self.notice.emit('Ligue a câmera e posicione o rosto antes de calibrar.'); return
+        self.record_change(); self.smoother.calibrate()
+        self.preferences['face_neutral'] = dict(self.smoother.neutral); self.remember_avatar(); self.defer_save()
+        self.notice.emit('Posição neutra calibrada e salva para este personagem.')
 
     def calibrate_audio(self):
         if not self.microphone.is_running:
             self.notice.emit('Ative o microfone antes de calibrar.'); return
+        self.record_change()
         self.noise_samples = []; self.calibration_until = time.monotonic()+3
         self.notice.emit('Fique em silêncio por 3 segundos…')
 
@@ -201,10 +284,12 @@ class StudioController(QObject):
 
     def remember_avatar(self):
         entry=dict(mode=self.mode,name=self.avatar_name())
-        if self.mode=='3D': entry['path']=self.model_path
+        if self.mode!='2D': entry['path']=self.model_path
         else:
             entry['sets']={key:list(paths) for key,paths in self.sets.items() if not key.startswith('_')}
             entry['expressions']=dict(self.preferences.get('expressions2d',{}))
+        entry['tuning'] = {key: getattr(self.settings, key) for key in (*PACK_SETTINGS, 'sensitivity', 'smoothing', 'noise_floor')}
+        entry['tuning'].update(face_smoothing=self.preferences['face_smoothing'], face_strength=self.preferences['face_strength'], face_neutral=dict(self.preferences['face_neutral']))
         recent=self.preferences.get('recent_avatars',[])
         if not isinstance(recent,list): recent=[]
         identity=entry.get('path') or entry.get('sets',{}).get('idle')
@@ -235,10 +320,14 @@ class StudioController(QObject):
         self.load_entry(entry)
 
     def load_entry(self, entry):
-        if entry.get('mode')=='3D':
+        tuning = entry.get('tuning', {})
+        if entry.get('mode') in ('3D', 'Live2D'):
             path=entry.get('path','')
-            if Path(path).is_file(): self.use_model(path)
-            else: self.notice.emit('Arquivo não encontrado. Importe o avatar novamente.')
+            if Path(path).is_file():
+                if entry['mode'] == 'Live2D':
+                    if not self.use_live2d(path): return
+                else: self.use_model(path)
+            else: self.notice.emit('Arquivo não encontrado. Importe o avatar novamente.'); return
         else:
             sets=entry.get('sets',{})
             if not sets.get('idle') or not all(Path(path).is_file() for path in sets['idle']):
@@ -247,16 +336,46 @@ class StudioController(QObject):
             self.preferences['avatar2d_name']=entry.get('name','Avatar 2D')
             self.preferences['expressions2d']=entry.get('expressions',{})
             self.remember_avatar(); self.changed.emit(); self.defer_save()
+        if isinstance(tuning, dict) and tuning:
+            checked = Settings.from_dict(tuning)
+            for key in (*PACK_SETTINGS, 'sensitivity', 'smoothing', 'noise_floor'):
+                if key in tuning: setattr(self.settings, key, getattr(checked, key))
+            from avatarcam.desktop.preferences import sanitize_preferences
+            prefs = sanitize_preferences(tuning)
+            for key in ('face_smoothing', 'face_strength', 'face_neutral'):
+                if key in tuning: self.preferences[key] = prefs[key]
+            self.smoother.neutral = dict(self.preferences['face_neutral'])
+            self.camera_revision += 1; self.remember_avatar(); self.defer_save(); self.changed.emit()
 
     def use_model(self, path):
+        self.record_change()
         self.manual_expression=None
+        self.renderer_report = {}
         self.model_path = path; self.settings.camera3d = None; self.camera_revision += 1
         self.switch_mode('3D'); self.remember_avatar(); self.notice.emit('Avatar 3D pronto na janela do app.')
 
     def import_3d(self, path):
-        self.submit(lambda: import_model(path), self.use_model)
+        def success(result): self.use_model(result); self.imported.emit()
+        self.submit(lambda: import_model(path), success)
+
+    def use_live2d(self, path):
+        from avatarcam.desktop.live2d import runtime_available
+        if not runtime_available():
+            self.notice.emit('Integração Live2D preparada. O Cubism Core licenciado ainda não está disponível nesta distribuição.'); return False
+        self.record_change(); self.manual_expression = None; self.model_path = path
+        self.settings.camera3d = None; self.camera_revision += 1
+        self.switch_mode('Live2D'); self.remember_avatar(); return True
+
+    def import_live2d(self, path):
+        from avatarcam.desktop.live2d import import_live2d, runtime_available
+        if not runtime_available():
+            self.notice.emit('Live2D aguarda autorização de distribuição e instalação do Cubism Core.'); return False
+        def success(result):
+            if self.use_live2d(result): self.imported.emit()
+        return self.submit(lambda: import_live2d(path), success)
 
     def use_sets(self, sets):
+        self.record_change()
         self.manual_expression=None
         for key in self.sets: self.sets[key] = sets.get(key, [])
         self.preferences['expressions2d'] = {}
@@ -277,16 +396,40 @@ class StudioController(QObject):
                 result.append(str(target))
             return result
         def success(result):
+            self.record_change()
             if role == 'idle':
                 self.sets['talk'] = []; self.sets['blink'] = []
                 self.preferences['expressions2d'] = {}
                 self.preferences['avatar2d_name'] = Path(paths[0]).stem if paths else 'Avatar 2D'
             self.sets[role] = result; self.store.clear(); self.switch_mode('2D'); self.remember_avatar()
             self.notice.emit('Imagens 2D importadas.')
+            if role == 'idle': self.imported.emit()
         self.submit(copy_images, success)
 
     def import_folder(self, path):
         self.submit(lambda: import_avatar_folder(path, Path(path).name), self.use_sets)
+
+    def import_pose_set(self, poses):
+        from copy import deepcopy
+        poses = deepcopy(poses)
+        def worker():
+            folder = APP_DIR/'images'; folder.mkdir(parents=True, exist_ok=True); result = {}
+            for role, paths in poses.items():
+                if role not in ('idle', 'talk', 'blink', 'happy', 'angry', 'sad', 'relaxed', 'surprised'): continue
+                result[role] = []
+                for source in paths[:256]:
+                    source = Path(source)
+                    with source.open('rb') as stream: digest = hashlib.file_digest(stream, 'sha256').hexdigest()[:16]
+                    target = folder/(digest+source.suffix.lower())
+                    if not target.exists(): copy_optimized_image(source, target)
+                    result[role].append(str(target))
+            if not result.get('idle'): raise ValueError('Adicione uma imagem parada.')
+            return result
+        def success(result):
+            self.use_sets({role: result.get(role, []) for role in ('idle','talk','blink')})
+            self.preferences['expressions2d'] = {key: paths for key, paths in result.items() if key not in ('idle','talk','blink') and paths}
+            self.remember_avatar(); self.defer_save(); self.changed.emit(); self.notice.emit('Personagem 2D montado e salvo.')
+        return self.submit(worker, success, 'Montando personagem 2D…')
 
     def import_pack(self, path):
         def success(result):
@@ -315,12 +458,16 @@ class StudioController(QObject):
                     lambda _: self.notice.emit('Pacote salvo com sucesso.'), 'Salvando pacote de avatar…')
 
     def tick(self):
-        now = time.monotonic(); dt = min(.2, now-self.last_tick); self.last_tick = now
+        now = time.monotonic(); elapsed = now-self.last_tick
+        self.tick_lag = max(0., elapsed-self.timer.interval()/1000)
+        dt = min(.2, elapsed); self.last_tick = now
         self.inputs.poll(now)
         raw = self.microphone.read_level() if self.inputs.wanted['audio'] and not self.paused else 0.
         self.speech.sensitivity = self.settings.sensitivity; self.speech.smoothing = self.settings.smoothing
         state = self.speech.update(raw, self.microphone.voice_allowed)
         self.level, self.speaking = state.level, state.speaking
+        if raw > .003 or not self.inputs.wanted['audio']: self.quiet_since = None
+        elif self.quiet_since is None: self.quiet_since = now
         if now < self.test_until and not self.paused: self.level = .7; self.speaking = True
         if self.calibration_until:
             self.noise_samples.append(raw)
@@ -346,3 +493,4 @@ class StudioController(QObject):
         try: self.microphone.stop()
         except Exception: pass
         self.executor.shutdown(wait=True, cancel_futures=True); self.save()
+        self.recovery.finish(capture_state(self))

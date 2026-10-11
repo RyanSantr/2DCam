@@ -19,6 +19,8 @@ from avatarcam.core.settings import APP_DIR
 from avatarcam.desktop.output import OUTPUT_SIZES, output_size
 from avatarcam.desktop.shortcuts import LiveShortcuts, SHORTCUTS, shortcut_rows, validate_bindings
 from avatarcam.desktop.library import avatar_id
+from avatarcam.desktop.creative import GESTURES
+from avatarcam.desktop.transparent import TransparentOutput
 
 
 def label(text, name=None, wrap=False):
@@ -86,6 +88,7 @@ class CaptureWindow(QMainWindow):
 class StudioWindow(QMainWindow):
     def __init__(self):
         super().__init__(); self.controller=StudioController(); self.capture_window=None
+        self.transparent_output = TransparentOutput(self); self.wizard = None
         self.controller.remember_avatar()
         self.device_signature=-1
         self.avatar3d=None; self.current_destination=None; self.quitting=False
@@ -112,7 +115,7 @@ class StudioWindow(QMainWindow):
         middle=QWidget(); center=QVBoxLayout(middle); center.setContentsMargins(0,0,0,0); center.setSpacing(10)
         imports=QHBoxLayout(); imports.addWidget(button('Importar avatar',self.choose_any,True))
         self.model_name=label('Avatar','section'); imports.addWidget(self.model_name,1)
-        self.mode_2d=button('2D',lambda:self.controller.switch_mode('2D')); self.mode_3d=button('3D',lambda:self.controller.switch_mode('3D'))
+        self.mode_2d=button('2D',lambda:self.controller.switch_mode('2D')); self.mode_3d=button('3D',self.activate_3d)
         for w in (self.mode_2d,self.mode_3d): w.setCheckable(True); imports.addWidget(w)
         center.addLayout(imports)
         self.preview=QStackedWidget(); self.preview.setMinimumHeight(250)
@@ -139,6 +142,7 @@ class StudioWindow(QMainWindow):
         self.build_studio_panel(); self.build_library_panel(); self.build_tracking_panel(); self.build_settings_panel()
         self.sync_timer=QTimer(self); self.sync_timer.setSingleShot(True); self.sync_timer.setInterval(100); self.sync_timer.timeout.connect(self.sync)
         self.controller.changed.connect(self.schedule_sync); self.controller.notice.connect(self.show_notice)
+        self.controller.imported.connect(self.open_wizard)
         self.build_menu(); self.statusBar().showMessage('Pronto')
         self.usage=ProcessUsage(); self.resource_label=label('','muted'); self.statusBar().addPermanentWidget(self.resource_label)
         self.stats_timer=QTimer(self); self.stats_timer.timeout.connect(self.update_resources); self.stats_timer.start(2000)
@@ -148,10 +152,13 @@ class StudioWindow(QMainWindow):
         QShortcut(QKeySequence('Ctrl+T'),self).activated.connect(self.controller.toggle_tracking)
         QShortcut(QKeySequence('Ctrl+P'),self).activated.connect(self.controller.toggle_pause)
         QShortcut(QKeySequence('Ctrl+Shift+O'),self).activated.connect(self.open_capture)
+        QShortcut(QKeySequence('Ctrl+Z'),self).activated.connect(lambda:self.undo_change())
+        QShortcut(QKeySequence('Ctrl+Shift+Z'),self).activated.connect(lambda:self.undo_change(True))
         self.local_live_shortcuts=[]
         self.rebuild_shortcuts()
         self.sync()
         self.controller.inputs.request_scan()
+        QTimer.singleShot(600, self.recover_session)
 
     def rebuild_shortcuts(self):
         for shortcut in self.local_live_shortcuts:
@@ -179,6 +186,7 @@ class StudioWindow(QMainWindow):
 
     def update_resources(self):
         values=self.usage.sample(); self.controller.resource_usage=values
+        self.controller.adapt_performance(time.monotonic())
         if values:
             fps=self.controller.renderer_report.get('fps',0) if self.controller.mode=='3D' else self.controller.performance['fps']
             self.resource_label.setText(f"{values['private_mb']:.0f} MB privados · {fps:.0f} FPS")
@@ -197,20 +205,20 @@ class StudioWindow(QMainWindow):
     def route_avatar(self):
         c=self.controller; capture=self.capture_window
         destination='output' if capture else 'studio'
-        if c.mode=='2D' and self.avatar3d is not None:
+        if self.avatar3d is not None and (c.mode=='2D' or self.avatar3d.kind != c.mode):
             old=self.avatar3d; self.avatar3d=None; old.release(); c.renderer_report={}
-        if c.mode=='3D' and self.avatar3d is None:
+        if c.mode!='2D' and self.avatar3d is None:
             self.avatar2d.clear_cache(); c.store.clear()
             self.avatar3d=EmbeddedAvatar(c)
         c.output_active=bool(capture)
         hosts=capture.hosts if capture else self.studio_hosts
-        widget=self.avatar3d if c.mode=='3D' else self.avatar2d
-        host=hosts[1 if c.mode=='3D' else 0]
+        widget=self.avatar3d if c.mode!='2D' else self.avatar2d
+        host=hosts[1 if c.mode!='2D' else 0]
         if widget.parentWidget() is not host:
             widget.setParent(host); host.layout().addWidget(widget); widget.show()
         self.avatar2d.capture=bool(capture)
-        if capture: capture.stack.setCurrentIndex(1 if c.mode=='3D' else 0)
-        self.preview.setCurrentIndex(2 if capture else 1 if c.mode=='3D' else 0)
+        if capture: capture.stack.setCurrentIndex(1 if c.mode!='2D' else 0)
+        self.preview.setCurrentIndex(2 if capture else 1 if c.mode!='2D' else 0)
         self.output_button.setText('Mostrar saída' if capture else 'Saída OBS')
         self.update_render_visibility()
 
@@ -265,6 +273,12 @@ class StudioWindow(QMainWindow):
             btn=button(name,lambda k=key:self.controller.command('expression',k)); btn.setCheckable(True)
             grid.addWidget(btn,index//2,index%2); self.expression_buttons[key]=btn
         expressions.addLayout(grid); expressions.addWidget(label('Configure as poses 2D na Biblioteca.','muted',True))
+        self.edit_expression_button = button('Editar expressões do modelo', self.edit_expressions); expressions.addWidget(self.edit_expression_button)
+        actions = details('Ações do personagem', layout); action_grid = QGridLayout(); self.gesture_buttons = {}
+        for index, (key, name) in enumerate(GESTURES.items()):
+            item = button(name, lambda k=key: self.controller.play_gesture(k)); action_grid.addWidget(item,index//2,index%2); self.gesture_buttons[key]=item
+        actions.addLayout(action_grid)
+        layout.addWidget(button('Preparar personagem', self.open_wizard))
         layout.addStretch()
 
     def build_library_panel(self):
@@ -282,6 +296,7 @@ class StudioWindow(QMainWindow):
         actions.addWidget(self.favorite_button); actions.addWidget(self.rename_button); recent.addLayout(actions)
         self.refresh_recent()
         assets=details('Poses e expressões 2D',layout)
+        assets.addWidget(button('Montar personagem visualmente', self.edit_poses, True))
         for role,text in (('idle','Imagem / animação parada'),('talk','Imagem / animação falando'),('blink','Imagem / animação piscando'),('pet','Adicionar pet')):
             assets.addWidget(button(text,lambda r=role:self.choose_2d(r)))
         assets.addWidget(button('Vincular expressão 2D',self.bind_expression))
@@ -318,15 +333,18 @@ class StudioWindow(QMainWindow):
 
     def add_slider(self,layout,name,value,low,high,callback):
         layout.addWidget(label(name,'muted')); slider=QSlider(Qt.Orientation.Horizontal); slider.setRange(low,high); slider.setValue(value)
+        slider.sliderPressed.connect(self.controller.record_change)
         slider.valueChanged.connect(callback); layout.addWidget(slider); return slider
 
     def build_settings_panel(self):
         layout=self.panel('Configurações','Desempenho e captura')
         performance=group('Desempenho',layout); self.performance_combo=QComboBox()
+        self.performance_combo.addItem('Automático', 'auto')
         for key,values in PRESETS.items(): self.performance_combo.addItem(values['name'],key)
         self.performance_combo.setCurrentIndex(max(0,self.performance_combo.findData(self.controller.preferences.get('performance','balanced'))))
         self.performance_combo.currentIndexChanged.connect(lambda index:self.controller.set_performance(self.performance_combo.itemData(index)))
         performance.addWidget(self.performance_combo)
+        self.adaptive_status = label('', 'muted', True); performance.addWidget(self.adaptive_status)
         performance.addWidget(label('Econômico: 24 FPS e câmera reduzida. Equilibrado: 30 FPS. Qualidade: 60 FPS.','muted',True))
         audio=details('Ajustes de áudio',layout); self.sensitivity_slider=self.add_slider(audio,'Sensibilidade',int(self.controller.settings.sensitivity*100),4,70,lambda x:self.set_setting('sensitivity',x/100))
         self.filter_combo=QComboBox(); self.filter_combo.addItems(['Volume','Filtro de voz'])
@@ -354,17 +372,26 @@ class StudioWindow(QMainWindow):
         self.output_on_top=QCheckBox('Saída sempre no topo'); self.output_on_top.setChecked(self.controller.preferences['output_on_top'])
         self.output_on_top.toggled.connect(self.change_output_top); output.addWidget(self.output_on_top)
         output.addWidget(button('Como capturar no OBS',self.obs_help))
+        self.transparent_button = button('Ligar saída transparente', self.toggle_transparent); output.addWidget(self.transparent_button)
+        output.addWidget(label('Spout2: preserva transparência. Requer o complemento Spout2 no OBS. Até 640 px / 24 FPS; começa desligado.', 'muted', True))
         shortcuts=details('Atalhos de live',layout)
         self.global_shortcuts=QCheckBox('Usar também fora do app'); self.global_shortcuts.setChecked(self.controller.preferences['global_shortcuts'])
         self.global_shortcuts.toggled.connect(self.configure_live_shortcuts); shortcuts.addWidget(self.global_shortcuts)
         self.shortcut_summary=label('','muted',True); shortcuts.addWidget(self.shortcut_summary)
         shortcuts.addWidget(button('Personalizar atalhos',self.edit_shortcuts))
+        layout.addWidget(button('Verificar funcionamento', self.show_health))
+        layout.addWidget(button('Restaurar ajustes deste avatar', self.reset_avatar_settings))
         layout.addWidget(button('Recarregar prévia 3D',self.reload_renderer)); layout.addWidget(button('Exportar diagnóstico',self.export_diagnostics)); layout.addStretch()
 
     def build_menu(self):
         menu=self.menuBar().addMenu('Arquivo')
         for text,callback in (('Importar avatar…',self.choose_any),('Importar pasta 2D…',self.choose_folder),('Importar pacote…',self.choose_pack),('Exportar avatar…',self.export_pack),('Sair',self.close)):
             menu.addAction(text,callback)
+        editing=self.menuBar().addMenu('Editar')
+        self.undo_action=editing.addAction('Desfazer',lambda:self.undo_change())
+        self.redo_action=editing.addAction('Refazer',lambda:self.undo_change(True))
+        editing.addAction('Montar personagem 2D…',self.edit_poses)
+        editing.addAction('Expressões do modelo…',self.edit_expressions)
         menu=self.menuBar().addMenu('Ajuda'); menu.addAction('Como usar',lambda:QMessageBox.information(self,'Comece por aqui','1. Importe um PNG/GIF, VRM ou GLB.\n2. Ative o microfone ou o rastreamento.\n3. Calibre a posição neutra olhando para a câmera.\n4. Ajuste o enquadramento com o mouse.\n5. Abra Janela do avatar para uma saída sem controles.\n\nCtrl+O: importar · Ctrl+M: microfone · Ctrl+T: câmera · Espaço: teste de fala.'))
 
     def select_panel(self,index):
@@ -412,6 +439,7 @@ class StudioWindow(QMainWindow):
         layout.addLayout(grid); error_label=label('','muted',True); layout.addWidget(error_label)
         restore=button('Restaurar padrões',lambda:[editor.setKeySequence(QKeySequence(chord)) for chord,action,_ in SHORTCUTS for editor in [editors[action]]]); layout.addWidget(restore)
         buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Save|QDialogButtonBox.StandardButton.Cancel)
+        buttons.button(QDialogButtonBox.StandardButton.Save).setText('Salvar'); buttons.button(QDialogButtonBox.StandardButton.Cancel).setText('Cancelar')
         buttons.rejected.connect(dialog.reject)
         def save():
             try: bindings=validate_bindings({action:editor.keySequence().toString(QKeySequence.SequenceFormat.PortableText) for action,editor in editors.items()})
@@ -440,12 +468,91 @@ class StudioWindow(QMainWindow):
             button=self.expression_buttons.get(key)
             if button is not None and not button.isEnabled(): self.show_notice('Esta expressão não está disponível neste avatar.'); return
             self.controller.command('expression',key)
+        elif action.startswith('gesture:'): self.controller.play_gesture(action.split(':',1)[1])
 
     def obs_help(self):
         QMessageBox.information(self,'Capturar no OBS','1. Abra a saída do avatar.\n2. No OBS, adicione Captura de janela.\n3. Selecione 2DCam - Avatar.\n4. Use o método Windows 10 (1903 ou superior) se Automático falhar.\n5. Desative Capturar cursor e ative Área do cliente.\n6. Adicione o filtro Chroma Key para remover o fundo verde/azul.\n\nMantenha a janela de saída aberta e sem minimizar. Para poupar recursos, use o modo Econômico e oculte os controles.\n\nA captura depende do Windows, da GPU e do OBS. Guia oficial: obsproject.com/kb/window-capture-sources')
     def show_notice(self,text): self.statusBar().showMessage(text,12000)
-    def set_preference(self,key,value): self.controller.preferences[key]=value; self.controller.defer_save(); self.controller.changed.emit()
-    def set_setting(self,key,value): setattr(self.controller.settings,key,value); self.controller.defer_save()
+    def set_preference(self,key,value):
+        if key in ('face_smoothing','face_strength') and not any(slider.isSliderDown() for slider in self.findChildren(QSlider)): self.controller.record_change()
+        self.controller.preferences[key]=value; self.controller.defer_save(); self.controller.changed.emit()
+    def set_setting(self,key,value):
+        if not any(slider.isSliderDown() for slider in self.findChildren(QSlider)): self.controller.record_change()
+        setattr(self.controller.settings,key,value); self.controller.defer_save()
+
+    def activate_3d(self):
+        c=self.controller
+        if c.model_path.lower().endswith('.model3.json'): c.use_model(str(ASSETS/'AvatarHumanoide.vrm'))
+        else: c.switch_mode('3D')
+
+    def open_wizard(self):
+        if self.wizard: self.wizard.raise_(); return
+        from avatarcam.desktop.dialogs import AvatarWizard
+        self.wizard=AvatarWizard(self); self.wizard.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        self.wizard.setWindowModality(Qt.WindowModality.WindowModal)
+        def done(_): self.wizard=None
+        self.wizard.finished.connect(done); self.wizard.show()
+
+    def edit_expressions(self):
+        c=self.controller
+        if c.mode=='2D': self.edit_poses(); return
+        if not c.renderer_report.get('loaded'): self.show_notice('Aguarde o personagem carregar antes de editar as expressões.'); return
+        from avatarcam.desktop.dialogs import ExpressionEditor
+        global_enabled=self.live_shortcuts.enabled; self.live_shortcuts.close()
+        try:
+            dialog=ExpressionEditor(self); dialog.exec(); dialog.deleteLater()
+        finally:
+            if global_enabled: self.configure_live_shortcuts(True)
+
+    def edit_poses(self):
+        from avatarcam.desktop.dialogs import PoseEditor
+        dialog=PoseEditor(self); dialog.exec(); dialog.deleteLater()
+
+    def show_health(self):
+        from avatarcam.desktop.dialogs import HealthDialog
+        dialog=HealthDialog(self); dialog.exec(); dialog.deleteLater()
+
+    def resolve_issue(self,action):
+        if action=='resume': self.controller.toggle_pause()
+        elif action=='devices': self.controller.inputs.request_scan(); self.select_panel(2)
+        elif action=='camera': self.select_panel(2); self.show_camera.setChecked(True)
+        elif action=='audio': self.select_panel(0); self.controller.calibrate_audio()
+        elif action=='reload': self.reload_renderer()
+        elif action=='expressions': self.edit_expressions()
+        elif action=='performance': self.controller.set_performance('auto'); self.sync_profile_controls(); self.select_panel(3)
+        elif action=='output': self.select_panel(3)
+
+    def undo_change(self,redo=False):
+        if self.controller.travel_history(redo): self.sync_profile_controls(); self.sync()
+
+    def reset_avatar_settings(self):
+        from avatarcam.core.settings import Settings
+        c=self.controller; c.record_change(); defaults=Settings()
+        for key in ('avatar_scale','avatar_offset_x','avatar_offset_y','avatar_rotation','camera3d','sensitivity','smoothing','noise_floor'):
+            setattr(c.settings,key,getattr(defaults,key))
+        c.preferences.update(face_smoothing=.55,face_strength=1.)
+        c.preferences['face_neutral']=dict(yaw=0.,pitch=0.,roll=0.); c.smoother.neutral=dict(c.preferences['face_neutral'])
+        c.preferences['expression_profiles'].pop(c.identity,None)
+        c.manual_expression=None; c.camera_revision+=1; c.remember_avatar(); c.defer_save(); c.changed.emit()
+        self.sync_profile_controls(); self.show_notice('Ajustes restaurados. Use Desfazer para recuperar os anteriores.')
+
+    def toggle_transparent(self):
+        if self.controller.transparent_active: self.transparent_output.stop(); self.show_notice('Saída transparente desligada.')
+        else: self.transparent_output.start()
+        self.sync()
+
+    def import_live2d(self,path):
+        from avatarcam.desktop.live2d import runtime_available
+        if not runtime_available():
+            QMessageBox.information(self,'Live2D','A integração está preparada, mas o Cubism Core não acompanha esta versão.\n\nA publicação de apps de rastreamento requer autorização da Live2D. Assim que houver autorização, o componente poderá ser incorporado e validado.\n\nPNG/GIF e VRM/GLB continuam disponíveis.'); return
+        self.controller.import_live2d(path)
+
+    def recover_session(self):
+        c=self.controller
+        restore=False
+        if c.recovery.previous:
+            restore=QMessageBox.question(self,'Recuperar sessão','O app não encerrou normalmente na última vez. Recuperar personagem e ajustes salvos?\n\nCâmera e microfone continuarão desligados.')==QMessageBox.StandardButton.Yes
+        c.start_recovery(restore); self.sync_profile_controls()
     def change_filter(self,index):
         self.controller.settings.speech_mode='vad' if index else 'volume'
         self.controller.microphone.speech_mode=self.controller.settings.speech_mode; self.controller.defer_save()
@@ -497,11 +604,16 @@ class StudioWindow(QMainWindow):
 
     def sync(self):
         c=self.controller; self.route_avatar(); self.refresh_recent(); self.refresh_devices()
+        self.undo_action.setEnabled(bool(c.history.undo)); self.redo_action.setEnabled(bool(c.history.redo))
+        self.edit_expression_button.setEnabled(c.mode!='2D' and bool(c.renderer_report.get('loaded')))
+        for key, item in self.gesture_buttons.items(): item.setEnabled(not c.paused and (c.mode=='2D' or key in c.renderer_report.get('gestures',[])))
+        self.adaptive_status.setText('Em uso: '+c.performance['name'] if c.preferences['performance']=='auto' else '')
+        self.transparent_button.setText('Desligar saída transparente' if c.transparent_active else 'Ligar saída transparente')
         self.pause_button.setText('Retomar' if c.paused else 'Pausar')
         self.quick_mic.setChecked(c.inputs.wanted['audio']); self.quick_camera.setChecked(c.inputs.wanted['camera'])
         self.quick_mic.setToolTip(('Desligar' if c.inputs.wanted['audio'] else 'Ativar')+' microfone. '+c.inputs.status['audio'])
         self.quick_camera.setToolTip(('Desligar' if c.inputs.wanted['camera'] else 'Ativar')+' rastreamento. '+c.inputs.status['camera'])
-        self.mode_2d.setChecked(c.mode=='2D'); self.mode_3d.setChecked(c.mode=='3D')
+        self.mode_2d.setChecked(c.mode=='2D'); self.mode_3d.setChecked(c.mode!='2D'); self.mode_3d.setText('Live2D' if c.mode=='Live2D' else '3D')
         name=c.avatar_name()
         self.model_name.setToolTip(name); self.model_name.setText(name if len(name)<=32 else name[:29]+'…')
         self.model_name.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Preferred)
@@ -511,7 +623,7 @@ class StudioWindow(QMainWindow):
         status=c.inputs.status['camera'] or c.tracking_status
         self.face_status.setText(status); self.tracking_detail.setText(status)
         for key,btn in self.expression_buttons.items(): btn.setChecked(key==(c.manual_expression or 'auto'))
-        if c.renderer_report.get('loaded') and c.mode=='3D':
+        if c.renderer_report.get('loaded') and c.mode!='2D':
             supported=c.renderer_report.get('expressions',[])
             for key,btn in self.expression_buttons.items():
                 btn.setEnabled(key in ('auto','neutral') or key in supported)
@@ -545,13 +657,14 @@ class StudioWindow(QMainWindow):
         path,_=QFileDialog.getOpenFileName(self,'Importar avatar 3D','','Avatar 3D (*.vrm *.glb)')
         if path: self.controller.import_3d(path)
     def choose_any(self):
-        path,_=QFileDialog.getOpenFileName(self,'Importar avatar','','Avatares (*.vrm *.glb *.png *.gif *.avatarpack)')
+        path,_=QFileDialog.getOpenFileName(self,'Importar avatar','','Avatares (*.vrm *.glb *.png *.gif *.avatarpack *.model3.json)')
         if path: self.import_path(path)
     def import_path(self,path):
         extension=Path(path).suffix.lower()
         if extension in ('.vrm','.glb'): self.controller.import_3d(path)
         elif extension=='.avatarpack': self.controller.import_pack(path)
         elif extension in ('.png','.gif'): self.controller.import_2d([path])
+        elif str(path).lower().endswith('.model3.json'): self.import_live2d(path)
         else: self.show_notice('Formato não suportado. Use PNG, GIF, VRM, GLB ou .avatarpack.')
     def choose_folder(self):
         path=QFileDialog.getExistingDirectory(self,'Pasta com idle / talk / blink')
@@ -593,7 +706,7 @@ class StudioWindow(QMainWindow):
             if mode==1 and not entry.get('favorite'): continue
             if mode in (2,3) and entry['mode']!=('2D' if mode==2 else '3D'): continue
             key=avatar_id(entry)
-            path=APP_DIR/'thumbnails'/(key+'.png') if entry['mode']=='3D' else Path(entry['sets']['idle'][0])
+            path=APP_DIR/'thumbnails'/(key+'.png') if entry['mode']!='2D' else Path(entry['sets']['idle'][0])
             reader=QImageReader(str(path)); size=reader.size(); icon=QIcon(str(ASSETS/'studio.ico'))
             if size.isValid() and size.width()*size.height()<=32_000_000:
                 reader.setScaledSize(size.scaled(96,96,Qt.AspectRatioMode.KeepAspectRatio))
@@ -629,8 +742,8 @@ class StudioWindow(QMainWindow):
 
     def capture_thumbnail(self):
         c=self.controller
-        if c.mode!='3D' or not self.avatar3d or not c.renderer_report.get('loaded') or self.capture_window or not self.isVisible(): return
-        identity=avatar_id(dict(mode='3D',path=c.model_path))
+        if c.mode=='2D' or not self.avatar3d or not c.renderer_report.get('loaded') or self.capture_window or not self.isVisible(): return
+        identity=c.identity
         path=APP_DIR/'thumbnails'/(identity+'.png')
         if path.exists(): return
         pixmap=self.avatar3d.grab()
@@ -683,11 +796,12 @@ class StudioWindow(QMainWindow):
             key=c.preferences.get('output_size','540p')
             self.capture_window.resize(*output_size(key))
     def reset_camera(self):
-        if self.controller.mode=='3D': self.controller.command('reset_camera')
+        if self.controller.mode!='2D': self.controller.command('reset_camera')
         else:
+            self.controller.record_change()
             s=self.controller.settings; s.avatar_offset_x=s.avatar_offset_y=s.avatar_rotation=0.; s.avatar_scale=1.; self.controller.defer_save()
     def save_camera(self):
-        if self.controller.mode=='3D' and self.avatar3d: self.avatar3d.page().runJavaScript("document.getElementById('save-camera').click()")
+        if self.controller.mode!='2D' and self.avatar3d: self.avatar3d.page().runJavaScript("window.studioSaveCamera ? window.studioSaveCamera() : document.getElementById('save-camera').click()")
         else: self.controller.save()
         self.show_notice('Posição salva.')
     def open_capture(self):
@@ -701,12 +815,12 @@ class StudioWindow(QMainWindow):
     def save_image(self):
         path,_=QFileDialog.getSaveFileName(self,'Salvar prévia','Meu_avatar.png','PNG (*.png)')
         if path:
-            widget=self.avatar3d if self.controller.mode=='3D' else self.avatar2d
+            widget=self.avatar3d if self.controller.mode!='2D' else self.avatar2d
             widget.grab().save(path); self.show_notice('Imagem salva.')
     def export_diagnostics(self):
         path,_=QFileDialog.getSaveFileName(self,'Diagnóstico','2DCam-diagnostico.json','JSON (*.json)')
         if path:
-            data={'version':'3.4','mode':self.controller.mode,'embedded_renderer':self.controller.renderer_report,
+            data={'version':'3.5','mode':self.controller.mode,'embedded_renderer':self.controller.renderer_report,
                   'camera_running':self.controller.tracker.running,'face_detected':self.controller.face['detected'],
                   'vad_available':self.controller.microphone.vad_available,'renderer_errors':self.avatar3d.page().console_errors if self.avatar3d else [],
                   'performance':self.controller.preferences.get('performance'), 'process_usage':getattr(self.controller,'resource_usage',{})}
@@ -718,6 +832,7 @@ class StudioWindow(QMainWindow):
         if urls and urls[0].isLocalFile(): self.import_path(urls[0].toLocalFile())
     def closeEvent(self,event):
         self.quitting=True; self.stats_timer.stop(); self.sync_timer.stop(); self.live_shortcuts.close()
+        self.transparent_output.stop()
         if self.capture_window: self.capture_window.close()
         self.controller.close()
         if self.avatar3d: self.avatar3d.release()

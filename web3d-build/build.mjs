@@ -11,3 +11,10 @@ await build({
   target: 'es2022',
   minify: true,
 });
+if (process.env.AVATARCAM_ENABLE_CUBISM_BUILD === '1') await build({
+  absWorkingDir: root,
+  entryPoints: ['avatarcam/web3d/live2d-source.js'],
+  outfile: 'avatarcam/web3d/live2d.js',
+  nodePaths: [fileURLToPath(new URL('node_modules', import.meta.url))],
+  bundle: true, format: 'esm', target: 'es2022', minify: true,
+});

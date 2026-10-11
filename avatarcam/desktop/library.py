@@ -5,7 +5,7 @@ import os
 
 
 def avatar_id(entry):
-    path = entry.get('path') if entry.get('mode') == '3D' else next(iter(entry.get('sets', {}).get('idle', [])), '')
+    path = entry.get('path') if entry.get('mode') in ('3D', 'Live2D') else next(iter(entry.get('sets', {}).get('idle', [])), '')
     return hashlib.sha256((entry.get('mode', '') + ':' + os.path.normcase(os.path.abspath(path))).encode()).hexdigest()[:24]
 
 

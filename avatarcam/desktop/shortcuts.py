@@ -13,10 +13,14 @@ SHORTCUTS = (
     ('Ctrl+Alt+4', 'expression:angry', 'Bravo'),
     ('Ctrl+Alt+5', 'expression:sad', 'Triste'),
     ('Ctrl+Alt+6', 'expression:surprised', 'Surpreso'),
+    ('Ctrl+Alt+7', 'gesture:wave', 'Acenar'),
+    ('Ctrl+Alt+8', 'gesture:yes', 'Concordar'),
+    ('Ctrl+Alt+9', 'gesture:no', 'Negar'),
+    ('Ctrl+Alt+0', 'gesture:celebrate', 'Comemorar'),
 )
 
 DEFAULT_BINDINGS = {action: chord for chord, action, _ in SHORTCUTS}
-RESERVED = ('Ctrl+O', 'Ctrl+M', 'Ctrl+T', 'Ctrl+P', 'Ctrl+Shift+O', 'Space')
+RESERVED = ('Ctrl+O', 'Ctrl+M', 'Ctrl+T', 'Ctrl+P', 'Ctrl+Shift+O', 'Space', 'Ctrl+Z', 'Ctrl+Shift+Z')
 
 
 def validate_bindings(value):

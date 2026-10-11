@@ -19,7 +19,7 @@ def expressions(value):
 
 def sanitize_preferences(value):
     result = deepcopy(value) if isinstance(value, dict) else {}
-    choices = {'mode': ('3D', '2D'), 'performance': ('balanced', 'economy', 'quality'),
+    choices = {'mode': ('3D', '2D', 'Live2D'), 'performance': ('balanced', 'economy', 'quality', 'auto'),
                'output_background': ('green', 'blue', 'dark'), 'output_size': tuple(OUTPUT_SIZES)}
     for key, allowed in choices.items():
         if not isinstance(result.get(key), str) or result[key] not in allowed:
@@ -36,6 +36,10 @@ def sanitize_preferences(value):
         value = result.get(key, '')
         result[key] = value if isinstance(value, str) and len(value) <= 4096 else ''
     result['expressions2d'] = expressions(result.get('expressions2d'))
+    from avatarcam.desktop.creative import expression_config, neutral_pose
+    result['face_neutral'] = neutral_pose(result.get('face_neutral'))
+    profiles = result.get('expression_profiles', {})
+    result['expression_profiles'] = {key: expression_config(item) for key, item in list(profiles.items())[:48] if isinstance(key, str) and len(key) == 24} if isinstance(profiles, dict) else {}
     modes = result.get('profile_modes', {})
     result['profile_modes'] = {key: mode for key, mode in modes.items() if isinstance(key, str) and mode in ('2D', '3D')} if isinstance(modes, dict) else {}
     for key, default, low, high in (('face_smoothing', .55, .1, .9), ('face_strength', 1., .2, 2.), ('camera_device', 0, 0, 20)):
@@ -48,10 +52,10 @@ def sanitize_preferences(value):
     for entry in recent if isinstance(recent, list) else []:
         if not isinstance(entry, dict) or not isinstance(entry.get('name'), str):
             continue
-        if entry.get('mode') == '3D':
+        if entry.get('mode') in ('3D', 'Live2D'):
             path = entry.get('path')
             if isinstance(path, str) and 0 < len(path) <= 4096:
-                valid.append(dict(mode='3D', name=entry['name'], path=path))
+                valid.append(dict(mode=entry['mode'], name=entry['name'], path=path))
         elif entry.get('mode') == '2D':
             sets = entry.get('sets')
             if isinstance(sets, dict) and image_paths(sets.get('idle')) and sets['idle']:
@@ -67,13 +71,23 @@ def sanitize_preferences(value):
     # Reutiliza a validação de poses/expressões sem recursão de preferências.
     for entry in (raw[:48] if isinstance(raw, list) else []):
         if not isinstance(entry, dict) or not isinstance(entry.get('name'), str): continue
-        if entry.get('mode') == '3D' and isinstance(entry.get('path'), str) and 0 < len(entry['path']) <= 4096:
-            item = dict(mode='3D', name=entry['name'][:64], path=entry['path'])
+        if entry.get('mode') in ('3D', 'Live2D') and isinstance(entry.get('path'), str) and 0 < len(entry['path']) <= 4096:
+            item = dict(mode=entry['mode'], name=entry['name'][:64], path=entry['path'])
         elif entry.get('mode') == '2D' and isinstance(entry.get('sets'), dict) and image_paths(entry['sets'].get('idle')) and entry['sets']['idle']:
             item = dict(mode='2D', name=entry['name'][:64], sets={key: list(entry['sets'].get(key, [])) if image_paths(entry['sets'].get(key, [])) else [] for key in ROLES}, expressions=expressions(entry.get('expressions')))
         else: continue
         item['favorite'] = entry.get('favorite') is True
         item['renamed'] = entry.get('renamed') is True
+        if isinstance(entry.get('tuning'), dict):
+            from avatarcam.core.settings import Settings
+            fields = ('avatar_scale','avatar_offset_x','avatar_offset_y','avatar_rotation','animation_fps','camera3d',
+                      'auto_rotate3d','pet_enabled','pet_size','pet_offset_x','pet_offset_y','sensitivity','smoothing','noise_floor')
+            checked = Settings.from_dict(entry['tuning'])
+            item['tuning'] = {key: getattr(checked, key) for key in fields if key in entry['tuning']}
+            item['tuning']['face_neutral'] = neutral_pose(entry['tuning'].get('face_neutral'))
+            for key, low, high, default in (('face_smoothing', .1, .9, .55), ('face_strength', .2, 2., 1.)):
+                value = entry['tuning'].get(key, default)
+                item['tuning'][key] = max(low,min(high,value)) if isinstance(value,(float,int)) and not isinstance(value,bool) and math.isfinite(value) else default
         library.append(item)
     # Mantém a ordem e elimina entradas repetidas ao migrar os recentes.
     merged = []

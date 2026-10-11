@@ -18,3 +18,7 @@ studio-instance.lock
 qa-output/
 work/
 .env
+
+avatarcam/web3d/live2d.js
+
+avatarcam/web3d/live2dcubismcore.min.js

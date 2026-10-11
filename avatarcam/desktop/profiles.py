@@ -10,7 +10,7 @@ SETTING_FIELDS = ('avatar_scale', 'avatar_offset_x', 'avatar_offset_y', 'avatar_
                   'sensitivity', 'smoothing', 'noise_floor', 'speech_mode', 'mouth_hold_ticks', 'animation_fps',
                   'auto_rotate3d', 'pet_enabled', 'pet_size', 'pet_offset_x', 'pet_offset_y')
 PREFERENCE_FIELDS = ('mode', 'avatar2d_name', 'expressions2d', 'performance', 'face_smoothing',
-                     'face_strength', 'output_size', 'output_background', 'hide_controls', 'output_on_top')
+                     'face_strength', 'output_size', 'output_background', 'hide_controls', 'output_on_top', 'expression_profiles', 'face_neutral')
 
 
 def save_profile(controller, name):
@@ -40,8 +40,11 @@ def load_profile(controller, name):
     modern = isinstance(entry.get('studio'), dict)
     metadata = sanitize_preferences(entry['studio'] if modern else {'mode': controller.preferences.get('profile_modes', {}).get(name, '2D')})
     mode = metadata['mode']
+    if mode == 'Live2D':
+        from avatarcam.desktop.live2d import runtime_available
+        if not runtime_available(): raise ValueError('O componente Live2D não está disponível nesta distribuição.')
     model = checked.avatar3d_path or controller.model_path
-    if mode == '3D' and not Path(model).is_file():
+    if mode != '2D' and not Path(model).is_file():
         raise ValueError('O modelo deste perfil não foi encontrado. Importe o avatar novamente.')
     sets = {role: list(getattr(checked, field) or []) if field in entry else list(controller.sets.get(role, [])) for role, field in IMAGE_FIELDS.items()}
     if mode == '2D' and (not sets['idle'] or not all(Path(path).is_file() for path in sets['idle'])):
@@ -59,6 +62,7 @@ def load_profile(controller, name):
             if key in entry['studio']:
                 controller.preferences[key] = metadata[key]
         controller.set_performance(metadata['performance'])
+        if hasattr(controller, 'smoother'): controller.smoother.neutral = deepcopy(controller.preferences['face_neutral'])
     controller.settings.active_profile = name
     controller.camera_revision += 1
     controller.manual_expression = None

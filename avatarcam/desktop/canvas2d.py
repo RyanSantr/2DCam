@@ -3,7 +3,7 @@ import math
 import time
 from PIL.ImageQt import ImageQt
 from PySide6.QtCore import Qt, QRectF, QPointF
-from PySide6.QtGui import QPainter, QPixmap, QColor, QRadialGradient, QPen
+from PySide6.QtGui import QPainter, QPixmap, QColor, QRadialGradient, QPen, QImage
 from PySide6.QtWidgets import QWidget
 
 
@@ -46,12 +46,24 @@ class Avatar2D(QWidget):
     def paintEvent(self, event):
         painter = QPainter(self); painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        self.draw_avatar(painter)
+        painter.end()
+
+    def transparent_image(self):
+        size = self.size().scaled(640, 640, Qt.AspectRatioMode.KeepAspectRatio)
+        image = QImage(size, QImage.Format.Format_RGBA8888); image.fill(0)
+        painter = QPainter(image); painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        painter.scale(size.width()/max(1,self.width()), size.height()/max(1,self.height()))
+        self.draw_avatar(painter, transparent=True); painter.end(); return image
+
+    def draw_avatar(self, painter, transparent=False):
         c = self.controller; s = c.settings; face = c.face; now=time.monotonic()
         if c.paused and self.paused_at is None: self.paused_at=now
         elif not c.paused and self.paused_at is not None:
             self.paused_seconds+=now-self.paused_at; self.paused_at=None
         seconds=(self.paused_at if self.paused_at is not None else now)-self.start-self.paused_seconds
-        if self.capture: painter.fillRect(self.rect(), QColor(c.output_color))
+        if transparent: pass
+        elif self.capture: painter.fillRect(self.rect(), QColor(c.output_color))
         else:
             gradient = QRadialGradient(self.width()*.5,self.height()*.5,max(self.width(),self.height())*.7)
             gradient.setColorAt(0,QColor('#24272d')); gradient.setColorAt(1,QColor('#1a1c20'))
@@ -73,7 +85,14 @@ class Avatar2D(QWidget):
             painter.save()
             painter.translate(self.width()*(.5+s.avatar_offset_x*.4)+face['yaw']*35,
                               self.height()*(.52+s.avatar_offset_y*.4)+face['pitch']*20)
-            painter.rotate(s.avatar_rotation+face['roll']*45)
+            gesture = c.gesture_state(); extra = 0.
+            if gesture:
+                phase = gesture['progress']; envelope = math.sin(phase * math.pi)
+                if gesture['name'] == 'wave': extra = math.sin(phase*math.pi*8)*12*envelope
+                elif gesture['name'] == 'yes': painter.translate(0, math.sin(phase*math.pi*6)*18*envelope)
+                elif gesture['name'] == 'no': painter.translate(math.sin(phase*math.pi*6)*22*envelope, 0)
+                elif gesture['name'] == 'celebrate': painter.translate(0, -abs(math.sin(phase*math.pi*5))*30*envelope)
+            painter.rotate(s.avatar_rotation+face['roll']*45+extra)
             painter.drawPixmap(QRectF(-width/2,-height/2,width,height),pixmap,QRectF(pixmap.rect()))
             painter.restore()
         else:
@@ -87,6 +106,7 @@ class Avatar2D(QWidget):
     def mousePressEvent(self,event):
         if self.capture: return
         if event.button()==Qt.MouseButton.LeftButton:
+            self.controller.record_change()
             s=self.controller.settings; self.drag_start=(event.position(),s.avatar_offset_x,s.avatar_offset_y)
 
     def mouseMoveEvent(self,event):
@@ -100,5 +120,6 @@ class Avatar2D(QWidget):
 
     def wheelEvent(self,event):
         if self.capture: return
+        self.controller.record_change()
         s=self.controller.settings; s.avatar_scale=max(.25,min(2.5,s.avatar_scale+event.angleDelta().y()/1200))
         self.controller.defer_save(); self.update()
