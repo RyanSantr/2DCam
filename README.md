@@ -4,7 +4,7 @@ Aplicativo para Windows com avatares 2D e 3D, resposta à voz e rastreamento fac
 
 ## Baixar e abrir
 
-**[Baixar 2DCam Studio 3.8 para Windows](https://github.com/RyanSantr/2DCam/releases/download/v3.8.0/2DCam-Studio-3.8.exe)**
+**[Baixar 2DCam Studio 3.9 para Windows](https://github.com/RyanSantr/2DCam/releases/download/v3.9.0/2DCam-Studio-3.9.exe)**
 
 Abra o EXE. Não precisa instalar Python nem abrir um navegador. Na primeira abertura, aguarde a preparação dos componentes; as próximas usam a cópia já preparada. Requer Windows 10/11 de 64 bits e os componentes .NET Framework do Windows.
 
@@ -16,7 +16,11 @@ A personagem 3D de exemplo acompanha o app. Câmera e microfone começam desliga
 2. Ative o microfone para responder à voz ou **Ligar rastreamento** para acompanhar seu rosto. Use **Calibrar posição neutra** olhando para a câmera.
 3. Ajuste o enquadramento com o mouse e a roda. Salve a posição e abra **Saída OBS**.
 
-Na Biblioteca, você pode montar poses 2D, organizar favoritos e salvar perfis. Em Avatar, pode preparar o personagem, editar expressões disponíveis e usar gestos. **Ctrl+Z** desfaz alterações; **F8** mostra os controles e **F9** pausa.
+Na Biblioteca, você pode montar poses 2D, organizar favoritos e salvar cenas. Em Avatar, pode preparar o personagem, editar expressões disponíveis e usar gestos. **Ctrl+Z** desfaz alterações; **F8** mostra os controles e **F9** pausa.
+
+**Cenas e personagens:** prepare o personagem e clique em **Salvar cena**. Dê um nome como “Personagem 1 — Conversa”, depois prepare outro e salve “Personagem 2 — Jogo”. Cada cena guarda avatar 2D/3D, poses, velocidade da animação, enquadramento, movimentos e ajustes da saída. As nove primeiras combinações livres usam **Ctrl+Shift+1…9**. Você pode trocar ou desativar as teclas em **Configurações → Atalhos de live → Personalizar atalhos**. Os perfis de versões anteriores aparecem como cenas.
+
+A troca mantém a mesma janela **2DCam - Avatar** aberta para o OBS e carrega somente o personagem em uso. Para usar as teclas com o OBS ou um jogo em primeiro plano, ative **Usar também fora do app**. Essas cenas pertencem ao 2DCam; não trocam as cenas do OBS.
 
 **Animações 2D:** use **Biblioteca → Poses e expressões 2D → Montar personagem visualmente**. Cada pose (parado, falando, piscando e emoções) aceita um ou vários GIFs, PNGs e WebPs. Sequências seguem a ordem numérica dos nomes: `1`, `2`, `10`. A prévia permite pausar, reiniciar e ajustar imagens fixas de 1 a 30 quadros/s. GIF, WebP e PNG animados mantêm seus tempos originais, inclusive misturados com imagens fixas. A velocidade escolhida acompanha o personagem e seu pacote.
 
@@ -47,9 +51,9 @@ Personagens e configurações ficam em `%USERPROFILE%\.avatarcam_2d`. Os compone
 - `web3d-build/`: construção do renderizador incorporado.
 - `third-party-licenses/`: licenças dos componentes e modelos incluídos.
 
-No Windows, com **Python 3.12 x64**, execute `scripts/run.bat`. Para gerar `dist/2DCam-Studio-3.8.exe`, execute `scripts/build_exe.bat`.
+No Windows, com **Python 3.12 x64**, execute `scripts/run.bat`. Para gerar `dist/2DCam-Studio-3.9.exe`, execute `scripts/build_exe.bat`.
 
-Testes: `.venv\Scripts\python -m unittest discover -s tests -v`. Para alterar o renderizador, use Node 22 e execute `npm ci --ignore-scripts` e `npm run build` dentro de `web3d-build`. O renderizador pronto já acompanha o código.
+Para alterar o renderizador, use Node 22 e execute `npm ci --ignore-scripts` e `npm run build` dentro de `web3d-build`. O renderizador pronto já acompanha o código. As verificações do GitHub conferem a sintaxe, o preparador do EXE e o renderizador.
 
 ## Créditos
 

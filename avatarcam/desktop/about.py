@@ -2,7 +2,7 @@
 from pathlib import Path
 from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QComboBox, QTextBrowser, QDialogButtonBox
 
-VERSION = '3.8.0'
+VERSION = '3.9.0'
 ROOT = Path(__file__).resolve().parents[2]
 
 

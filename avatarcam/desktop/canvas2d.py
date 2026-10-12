@@ -11,6 +11,7 @@ class Avatar2D(QWidget):
     def __init__(self, controller, capture=False, parent=None):
         super().__init__(parent); self.controller = controller; self.capture = capture
         self.start = time.monotonic(); self.paused_at=None; self.paused_seconds=0.; self.pixmaps = OrderedDict(); self.cache_revision = -1; self.pixmap_bytes = 0; self.drag_start = None; self.last_error=None
+        self.animation_epoch=controller.animation_epoch
         self.setMinimumSize(260, 260); self.setMouseTracking(True)
         self.controller.changed.connect(self.update)
 
@@ -58,6 +59,8 @@ class Avatar2D(QWidget):
 
     def draw_avatar(self, painter, transparent=False):
         c = self.controller; s = c.settings; face = c.visual_face; now=time.monotonic()
+        if self.animation_epoch!=c.animation_epoch:
+            self.animation_epoch=c.animation_epoch; self.start=now; self.paused_seconds=0.; self.paused_at=None
         if c.paused and self.paused_at is None: self.paused_at=now
         elif not c.paused and self.paused_at is not None:
             self.paused_seconds+=now-self.paused_at; self.paused_at=None

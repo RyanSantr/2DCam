@@ -1,8 +1,10 @@
 """Perfis completos; valida tudo antes de substituir o avatar atual."""
 from copy import deepcopy
 from pathlib import Path
+import time
 from avatarcam.core.settings import Settings
 from avatarcam.desktop.preferences import sanitize_preferences, ROLES
+from avatarcam.desktop.shortcuts import with_scene_defaults, scene_action, MAX_SCENES
 
 IMAGE_FIELDS = dict(idle='idle_images', talk='speaking_images', blink='blink_images',
                     pet='pet_images', pet_talk='pet_speaking_images')
@@ -16,7 +18,9 @@ PREFERENCE_FIELDS = ('mode', 'avatar2d_name', 'expressions2d', 'performance', 'f
 def save_profile(controller, name):
     name = name.strip()
     if not name or len(name) > 80:
-        raise ValueError('Use um nome de perfil com até 80 caracteres.')
+        raise ValueError('Use um nome de cena com até 80 caracteres.')
+    if name not in (controller.settings.profiles or {}) and len(controller.settings.profiles or {}) >= MAX_SCENES:
+        raise ValueError('Você já tem 64 cenas. Exclua uma antes de salvar outra.')
     entry = {key: deepcopy(getattr(controller.settings, key)) for key in SETTING_FIELDS}
     entry['avatar3d_path'] = controller.model_path
     for role, field in IMAGE_FIELDS.items():
@@ -28,13 +32,16 @@ def save_profile(controller, name):
         controller.settings.profiles = {}
     controller.settings.profiles[name] = entry
     controller.settings.active_profile = name
+    controller.preferences['shortcut_bindings'] = with_scene_defaults(controller.preferences.get('shortcut_bindings'), controller.settings.profiles)
     controller.defer_save()
 
 
 def load_profile(controller, name):
     entry = (controller.settings.profiles or {}).get(name)
     if not isinstance(entry, dict):
-        raise ValueError('Perfil não encontrado.')
+        raise ValueError('Cena não encontrada.')
+    if getattr(controller, 'jobs', []):
+        raise ValueError('Aguarde a importação terminar antes de trocar de cena.')
     # Settings valida posições e valores; nenhum dado atual muda se houver erro.
     checked = Settings.from_dict(deepcopy(entry))
     modern = isinstance(entry.get('studio'), dict)
@@ -45,10 +52,13 @@ def load_profile(controller, name):
         if not runtime_available(): raise ValueError('O componente Live2D não está disponível nesta distribuição.')
     model = checked.avatar3d_path or controller.model_path
     if mode != '2D' and not Path(model).is_file():
-        raise ValueError('O modelo deste perfil não foi encontrado. Importe o avatar novamente.')
+        raise ValueError('O modelo desta cena não foi encontrado. Importe o avatar novamente.')
     sets = {role: list(getattr(checked, field) or []) if field in entry else list(controller.sets.get(role, [])) for role, field in IMAGE_FIELDS.items()}
-    if mode == '2D' and (not sets['idle'] or not all(Path(path).is_file() for path in sets['idle'])):
-        raise ValueError('As imagens deste perfil não foram encontradas. Importe o avatar novamente.')
+    if mode == '2D':
+        paths = [path for group in (*sets.values(), *metadata['expressions2d'].values()) for path in group]
+        if not sets['idle'] or not all(Path(path).is_file() for path in paths):
+            raise ValueError('As imagens desta cena não foram encontradas. Importe o avatar novamente.')
+    if model != controller.model_path: controller.renderer_report = {}
     controller.model_path = model
     controller.sets = sets
     for key in SETTING_FIELDS:
@@ -66,6 +76,8 @@ def load_profile(controller, name):
     controller.settings.active_profile = name
     controller.camera_revision += 1
     controller.manual_expression = None
+    controller.expression_preview = None; controller.gesture = None
+    controller.animation_epoch = time.time()
     controller.store.clear()
     controller.switch_mode(mode)
     controller.remember_avatar()
@@ -78,6 +90,7 @@ def delete_profile(controller, name):
     if name not in profiles:
         return False
     del profiles[name]
+    controller.preferences.get('shortcut_bindings', {}).pop(scene_action(name), None)
     controller.preferences.get('profile_modes', {}).pop(name, None)
     if controller.settings.active_profile == name:
         controller.settings.active_profile = 'Default'

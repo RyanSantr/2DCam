@@ -3,11 +3,12 @@ import json
 import time
 from PySide6.QtCore import Qt, QTimer, QEvent, QSize
 from PySide6.QtGui import QIcon, QImage, QPixmap, QShortcut, QKeySequence, QImageReader
+from PySide6.QtQuickWidgets import QQuickWidget
 from PySide6.QtWidgets import (QMenu, QMainWindow, QWidget, QFrame, QLabel, QPushButton,
     QVBoxLayout, QHBoxLayout, QGridLayout, QStackedWidget, QButtonGroup,
     QScrollArea, QGroupBox, QComboBox, QSlider, QCheckBox, QProgressBar,
     QFileDialog, QMessageBox, QInputDialog, QListWidget, QListWidgetItem, QSizePolicy,
-    QDialog, QDialogButtonBox, QKeySequenceEdit)
+    QDialog, QDialogButtonBox, QKeySequenceEdit, QApplication)
 from avatarcam.desktop.controller import StudioController, ASSETS
 from avatarcam.desktop.canvas2d import Avatar2D
 from avatarcam.desktop.webview import EmbeddedAvatar
@@ -18,7 +19,8 @@ from avatarcam.core.persistence import atomic_write_text
 from avatarcam.core.settings import APP_DIR
 from avatarcam.core.image_sequence import IMAGE_EXTS, IMAGE_FILTER
 from avatarcam.desktop.output import OUTPUT_SIZES, output_size
-from avatarcam.desktop.shortcuts import LiveShortcuts, SHORTCUTS, shortcut_rows, validate_bindings
+from avatarcam.desktop.shortcuts import (LiveShortcuts, SHORTCUTS, shortcut_rows, validate_bindings,
+    with_scene_defaults, scene_action, SCENE_PREFIX, MAX_SCENES)
 from avatarcam.desktop.library import avatar_id
 from avatarcam.desktop.creative import GESTURES
 from avatarcam.desktop.transparent import TransparentOutput
@@ -66,8 +68,11 @@ class CaptureWindow(QMainWindow):
             self.stack.addWidget(host); self.hosts.append(host)
         self.resize(*output_size(controller.preferences.get('output_size')))
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, controller.preferences.get('output_on_top',False))
+        # Prepara a composição 3D antes de exibir a saída. O Qt mantém o HWND
+        # quando um avatar 3D é inserido depois de uma cena somente 2D.
+        self.surface_guard=QQuickWidget(self); self.surface_guard.resize(1,1); self.surface_guard.move(-2,-2)
         self.shortcuts=[]
-        for chord,action,_ in shortcut_rows(controller.preferences['shortcut_bindings']):
+        for chord,action,_ in shortcut_rows(controller.preferences['shortcut_bindings'], controller.settings.profiles or {}):
             shortcut=QShortcut(QKeySequence(chord),self); shortcut.setAutoRepeat(False)
             shortcut.setEnabled(not controller.preferences['global_shortcuts'])
             shortcut.activated.connect(lambda value=action:parent.handle_live_shortcut(value))
@@ -119,6 +124,10 @@ class StudioWindow(QMainWindow):
         self.mode_2d=button('2D',lambda:self.controller.switch_mode('2D')); self.mode_3d=button('3D',self.activate_3d)
         for w in (self.mode_2d,self.mode_3d): w.setCheckable(True); imports.addWidget(w)
         center.addLayout(imports)
+        scenes=QHBoxLayout(); scenes.addWidget(label('Cena','muted'))
+        self.scene_combo=QComboBox(); self.scene_combo.setMinimumWidth(120); scenes.addWidget(self.scene_combo,1)
+        self.scene_combo.activated.connect(lambda index:self.load_profile_name(self.scene_combo.itemData(index)))
+        scenes.addWidget(button('Salvar cena',self.save_profile)); center.addLayout(scenes)
         self.preview=QStackedWidget(); self.preview.setMinimumHeight(250)
         self.studio_hosts=[]
         for _ in range(2):
@@ -165,7 +174,7 @@ class StudioWindow(QMainWindow):
         for shortcut in self.local_live_shortcuts:
             shortcut.setEnabled(False); shortcut.deleteLater()
         self.local_live_shortcuts=[]
-        for chord,action,_ in shortcut_rows(self.controller.preferences['shortcut_bindings']):
+        for chord,action,_ in shortcut_rows(self.controller.preferences['shortcut_bindings'], self.controller.settings.profiles or {}):
             shortcut=QShortcut(QKeySequence(chord),self)
             shortcut.setAutoRepeat(False)
             shortcut.activated.connect(lambda value=action:self.handle_live_shortcut(value))
@@ -175,7 +184,7 @@ class StudioWindow(QMainWindow):
             for shortcut in self.capture_window.shortcuts:
                 shortcut.setEnabled(False); shortcut.deleteLater()
             self.capture_window.shortcuts=[]
-            for chord,action,_ in shortcut_rows(self.controller.preferences['shortcut_bindings']):
+            for chord,action,_ in shortcut_rows(self.controller.preferences['shortcut_bindings'], self.controller.settings.profiles or {}):
                 shortcut=QShortcut(QKeySequence(chord),self.capture_window); shortcut.setAutoRepeat(False)
                 shortcut.setEnabled(not self.live_shortcuts.enabled)
                 shortcut.activated.connect(lambda value=action:self.handle_live_shortcut(value))
@@ -290,7 +299,7 @@ class StudioWindow(QMainWindow):
         layout.addStretch()
 
     def build_library_panel(self):
-        layout=self.panel('Biblioteca','PNG / GIF · VRM / GLB')
+        layout=self.panel('Biblioteca','PNG / GIF / WebP · VRM / GLB')
         layout.addWidget(button('Usar a moça de exemplo',lambda:self.controller.use_model(str(ASSETS/'AvatarHumanoide.vrm')),True))
         layout.addWidget(button('Exemplo 2D',self.demo_2d))
         recent=group('Meus avatares',layout); self.recent_signature=None
@@ -313,10 +322,14 @@ class StudioWindow(QMainWindow):
         packs=details('Pacotes portáteis',layout); packs.addWidget(button('Importar .avatarpack',self.choose_pack))
         packs.addWidget(button('Exportar avatar atual',self.export_pack))
         packs.addWidget(label('O pacote leva poses, vínculos de expressões, movimentos e enquadramento.','muted',True))
-        profiles=details('Perfis salvos',layout); self.profile_combo=QComboBox(); profiles.addWidget(self.profile_combo)
+        profiles=details('Cenas e personagens',layout); self.profile_combo=QComboBox(); profiles.addWidget(self.profile_combo)
+        self.scene_shortcut_label=label('','muted',True); profiles.addWidget(self.scene_shortcut_label)
+        profiles.addWidget(label('Salve o personagem, poses, enquadramento e fundo. Cada cena pode ter seu próprio atalho.','muted',True))
         self.refresh_profiles(); self.profile_combo.activated.connect(self.load_profile)
-        profiles.addWidget(button('Salvar perfil atual',self.save_profile))
-        profiles.addWidget(button('Excluir perfil',self.delete_profile)); layout.addStretch()
+        self.profile_combo.currentIndexChanged.connect(self.update_scene_shortcut_label)
+        profiles.addWidget(button('Salvar cena atual',self.save_profile))
+        profiles.addWidget(button('Editar atalhos das cenas',self.edit_shortcuts))
+        profiles.addWidget(button('Excluir cena',self.delete_profile)); layout.addStretch()
 
     def build_tracking_panel(self):
         layout=self.panel('Câmera','Selecione e calibre o rastreamento.')
@@ -430,26 +443,43 @@ class StudioWindow(QMainWindow):
             self.capture_window.setGeometry(geometry); self.capture_window.show()
 
     def configure_live_shortcuts(self,enabled):
-        success=self.live_shortcuts.set_enabled(enabled,self.controller.preferences['shortcut_bindings'])
+        success=self.live_shortcuts.set_enabled(enabled,self.controller.preferences['shortcut_bindings'],self.controller.settings.profiles or {})
         if not success:
             self.global_shortcuts.blockSignals(True); self.global_shortcuts.setChecked(False); self.global_shortcuts.blockSignals(False)
             self.show_notice('Atalhos globais indisponíveis. Os atalhos dentro do app continuam ativos.')
         enabled=bool(enabled and success)
         for shortcut in self.local_live_shortcuts+(self.capture_window.shortcuts if self.capture_window else []): shortcut.setEnabled(not enabled)
         self.set_preference('global_shortcuts',enabled)
-        rows=shortcut_rows(self.controller.preferences['shortcut_bindings'])
+        rows=shortcut_rows(self.controller.preferences['shortcut_bindings'], self.controller.settings.profiles or {})
         self.shortcut_summary.setText('\n'.join(f'{chord}: {name}' for chord,_,name in rows[:3]))
+        self.update_scene_shortcut_label()
 
     def edit_shortcuts(self):
-        dialog=QDialog(self); dialog.setWindowTitle('Personalizar atalhos'); dialog.resize(430,520)
+        dialog=QDialog(self); dialog.setWindowTitle('Personalizar atalhos'); dialog.resize(520,580)
+        self.shortcuts_dialog=dialog
         layout=QVBoxLayout(dialog); layout.addWidget(label('Clique no campo e pressione a combinação.\nLimpe o campo para desativar uma ação.','muted',True))
-        grid=QGridLayout(); editors={}
-        for row,(_,action,name) in enumerate(SHORTCUTS):
-            editor=QKeySequenceEdit(QKeySequence(self.controller.preferences['shortcut_bindings'][action]))
+        scroll=QScrollArea(); scroll.setWidgetResizable(True); content=QWidget(); grid=QGridLayout(content); editors={}
+        names=list((self.controller.settings.profiles or {}))[:MAX_SCENES]
+        first=0
+        grid.addWidget(label('Cenas e personagens','section'),first,0,1,2)
+        if not names: grid.addWidget(label('Use Salvar cena para vincular um personagem.','muted',True),first+1,0,1,2)
+        for row,name in enumerate(names,first+1):
+            action=scene_action(name); editor=QKeySequenceEdit(QKeySequence(self.controller.preferences['shortcut_bindings'].get(action,'')))
             editor.setMaximumSequenceLength(1); editor.setClearButtonEnabled(True)
+            editor.setObjectName(action); editor.setToolTip('Trocar para a cena '+name)
+            grid.addWidget(label(name,wrap=True),row,0); grid.addWidget(editor,row,1); editors[action]=editor
+        start=len(names)+2
+        grid.addWidget(label('Controles e expressões','section'),start,0,1,2)
+        for row,(_,action,name) in enumerate(SHORTCUTS,start+1):
+            editor=QKeySequenceEdit(QKeySequence(self.controller.preferences['shortcut_bindings'][action]))
+            editor.setMaximumSequenceLength(1); editor.setClearButtonEnabled(True); editor.setObjectName(action)
             grid.addWidget(label(name),row,0); grid.addWidget(editor,row,1); editors[action]=editor
-        layout.addLayout(grid); error_label=label('','muted',True); layout.addWidget(error_label)
-        restore=button('Restaurar padrões',lambda:[editor.setKeySequence(QKeySequence(chord)) for chord,action,_ in SHORTCUTS for editor in [editors[action]]]); layout.addWidget(restore)
+        scroll.setWidget(content); layout.addWidget(scroll,1)
+        error_label=label('','muted',True); layout.addWidget(error_label)
+        def restore_defaults():
+            defaults=with_scene_defaults({},names)
+            for action,editor in editors.items(): editor.setKeySequence(QKeySequence(defaults.get(action,'')))
+        layout.addWidget(button('Restaurar padrões',restore_defaults))
         buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Save|QDialogButtonBox.StandardButton.Cancel)
         buttons.button(QDialogButtonBox.StandardButton.Save).setText('Salvar'); buttons.button(QDialogButtonBox.StandardButton.Cancel).setText('Cancelar')
         buttons.rejected.connect(dialog.reject)
@@ -465,10 +495,12 @@ class StudioWindow(QMainWindow):
         try: dialog.exec()
         finally:
             for shortcut,enabled in existing: shortcut.setEnabled(enabled)
+            self.refresh_profiles()
             self.rebuild_shortcuts()
+            self.shortcuts_dialog=None; dialog.deleteLater()
 
     def handle_live_shortcut(self,action):
-        if self.quitting: return
+        if self.quitting or QApplication.activeModalWidget(): return
         if action=='controls':
             if self.isVisible() and not self.isMinimized():
                 self.open_capture(); self.hide(); self.toggle_camera_preview()
@@ -481,6 +513,7 @@ class StudioWindow(QMainWindow):
             if button is not None and not button.isEnabled(): self.show_notice('Esta expressão não está disponível neste avatar.'); return
             self.controller.command('expression',key)
         elif action.startswith('gesture:'): self.controller.play_gesture(action.split(':',1)[1])
+        elif action.startswith(SCENE_PREFIX): self.load_profile_name(action[len(SCENE_PREFIX):])
 
     def obs_help(self):
         QMessageBox.information(self,'Capturar no OBS','1. Abra a saída do avatar.\n2. No OBS, adicione Captura de janela.\n3. Selecione 2DCam - Avatar.\n4. Use o método Windows 10 (1903 ou superior) se Automático falhar.\n5. Desative Capturar cursor e ative Área do cliente.\n6. Adicione o filtro Chroma Key para remover o fundo verde/azul.\n\nMantenha a janela de saída aberta e sem minimizar. Para poupar recursos, use o modo Econômico e oculte os controles.\n\nA captura depende do Windows, da GPU e do OBS. Guia oficial: obsproject.com/kb/window-capture-sources')
@@ -783,32 +816,71 @@ class StudioWindow(QMainWindow):
             c.library_revision+=1
 
     def refresh_profiles(self):
+        c=self.controller; names=list((c.settings.profiles or {}))[:MAX_SCENES]
+        bindings=with_scene_defaults(c.preferences['shortcut_bindings'],names)
+        if bindings!=c.preferences['shortcut_bindings']:
+            c.preferences['shortcut_bindings']=bindings; c.defer_save()
         self.profile_combo.blockSignals(True)
-        self.profile_combo.clear(); self.profile_combo.addItems(list((self.controller.settings.profiles or {}).keys()))
+        self.profile_combo.clear(); self.profile_combo.addItems(names)
         index=self.profile_combo.findText(self.controller.settings.active_profile)
         if index>=0: self.profile_combo.setCurrentIndex(index)
         self.profile_combo.blockSignals(False)
+        self.scene_combo.blockSignals(True); self.scene_combo.clear()
+        if not names: self.scene_combo.addItem('Nenhuma cena salva',None)
+        for name in names:
+            chord=bindings.get(scene_action(name),'')
+            self.scene_combo.addItem(name+(' · '+chord if chord else ''),name)
+        self.scene_combo.setEnabled(bool(names))
+        current=self.scene_combo.findData(c.settings.active_profile)
+        self.scene_combo.setCurrentIndex(max(0,current)); self.scene_combo.blockSignals(False)
+        self.update_scene_shortcut_label()
+
+    def update_scene_shortcut_label(self):
+        name=self.profile_combo.currentText()
+        chord=self.controller.preferences['shortcut_bindings'].get(scene_action(name),'')
+        self.scene_shortcut_label.setText('Atalho: '+chord if chord else 'Sem atalho. Escolha em Editar atalhos das cenas.')
+
     def save_profile(self):
-        name,ok=QInputDialog.getText(self,'Salvar perfil','Nome do perfil:')
+        if self.controller.jobs: self.show_notice('Aguarde a importação terminar antes de salvar a cena.'); return
+        name,ok=QInputDialog.getText(self,'Salvar cena','Nome da cena (ex.: Personagem 1 — Conversa):')
         if not ok or not name.strip(): return
+        name=name.strip()
         from avatarcam.desktop.profiles import save_profile
-        if name.strip() in (self.controller.settings.profiles or {}):
-            if QMessageBox.question(self,'Substituir perfil','Substituir o perfil '+name.strip()+'?')!=QMessageBox.StandardButton.Yes: return
-        try:
-            save_profile(self.controller,name); self.refresh_profiles(); self.show_notice('Perfil salvo.')
-        except ValueError as exc: self.show_notice(str(exc))
+        if name in (self.controller.settings.profiles or {}):
+            if QMessageBox.question(self,'Substituir cena','Substituir a cena '+name+'?')!=QMessageBox.StandardButton.Yes: return
+        c=self.controller; identity=c.identity; revision=c.camera_revision
+        def commit(camera=None):
+            if self.quitting: return
+            if c.identity!=identity or c.camera_revision!=revision or c.jobs:
+                self.show_notice('O personagem mudou durante o salvamento. Salve a cena novamente.'); return
+            try:
+                if camera:
+                    from avatarcam.core.settings import Settings
+                    c.settings.camera3d=Settings.from_dict({'camera3d':json.loads(camera)}).camera3d
+                save_profile(c,name); self.refresh_profiles(); self.rebuild_shortcuts()
+                chord=c.preferences['shortcut_bindings'].get(scene_action(name),'')
+                self.show_notice('Cena salva: '+name+(' · '+chord if chord else ''))
+            except (ValueError,TypeError) as exc: self.show_notice(str(exc))
+        if c.mode=='3D' and self.avatar3d and c.renderer_report.get('loaded'):
+            self.avatar3d.page().runJavaScript('window.studioCamera ? JSON.stringify(window.studioCamera()) : null',commit)
+        else: commit()
+
     def load_profile(self,index):
+        self.load_profile_name(self.profile_combo.itemText(index))
+
+    def load_profile_name(self,name):
+        if not isinstance(name,str) or not name: return
         try:
             from avatarcam.desktop.profiles import load_profile
-            load_profile(self.controller,self.profile_combo.itemText(index)); self.sync_profile_controls()
-            self.show_notice('Perfil carregado.')
+            load_profile(self.controller,name); self.sync_profile_controls(); self.refresh_profiles()
+            self.show_notice('Cena: '+name)
         except Exception as exc: self.show_notice(str(exc))
     def delete_profile(self):
         name=self.profile_combo.currentText()
         if not name: return
-        if QMessageBox.question(self,'Excluir perfil','Excluir o perfil '+name+'? Os arquivos do avatar serão mantidos.')!=QMessageBox.StandardButton.Yes: return
+        if QMessageBox.question(self,'Excluir cena','Excluir a cena '+name+'? Os arquivos do avatar serão mantidos.')!=QMessageBox.StandardButton.Yes: return
         from avatarcam.desktop.profiles import delete_profile
-        delete_profile(self.controller,name); self.refresh_profiles(); self.show_notice('Perfil excluído.')
+        delete_profile(self.controller,name); self.refresh_profiles(); self.rebuild_shortcuts(); self.show_notice('Cena excluída.')
 
     def sync_profile_controls(self):
         c=self.controller

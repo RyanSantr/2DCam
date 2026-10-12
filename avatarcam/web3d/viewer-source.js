@@ -281,7 +281,8 @@ new ResizeObserver(() => {
 }).observe(stage);
 $('test').onclick=()=>command('test'); $('microphone').onclick=()=>command('microphone');
 $('reset').onclick=async()=>{ if(await command('reset_camera')) { fitCamera(); toast('Enquadramento restaurado.'); } };
-$('save-camera').onclick=async()=>{ if(await command('camera',{position:camera.position.toArray(),target:controls.target.toArray()})) toast('Enquadramento salvo e aplicado à captura OBS.'); };
+window.studioCamera=()=>({position:camera.position.toArray(),target:controls.target.toArray()});
+$('save-camera').onclick=async()=>{ if(await command('camera',window.studioCamera())) toast('Enquadramento salvo e aplicado à captura OBS.'); };
 document.querySelectorAll('[data-expression]').forEach(button => button.onclick=()=>command('expression',button.dataset.expression));
 $('copy-obs').onclick=async()=>{ const url=new URL(location.href); url.search='?capture=1'; try{await navigator.clipboard.writeText(url.href);toast('URL copiada. Cole em uma Fonte de navegador no OBS.');}catch{toast('Use o botão Copiar URL para o OBS no painel do app.');} };
 $('fullscreen').onclick=()=>{ if(document.fullscreenElement) document.exitFullscreen(); else stage.requestFullscreen(); };
