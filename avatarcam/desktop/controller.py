@@ -11,6 +11,7 @@ from avatarcam.core.persistence import atomic_write_text
 from avatarcam.core.model3d import import_model
 from avatarcam.core.avatar_pack import import_avatar_pack, import_avatar_folder, copy_optimized_image, export_avatar_pack
 from avatarcam.core.asset_store import AssetStore
+from avatarcam.core.image_sequence import image_paths
 from avatarcam.core.speech_detector import SpeechDetector
 from avatarcam.core.timing import calibrate_noise
 from avatarcam.audio.microphone import MicrophoneInput
@@ -428,7 +429,11 @@ class StudioController(QObject):
         self.notice.emit('Avatar 2D pronto. Adicione imagens de fala e piscar se desejar.')
 
     def import_2d(self, paths, role='idle'):
+        paths = image_paths(paths)
+        budget, side = self.store.max_bytes, self.store.max_side
         def copy_images():
+            if not paths: raise ValueError('Escolha imagens PNG, GIF ou WebP.')
+            if len(paths) > 256: raise ValueError('Use até 256 arquivos por pose.')
             folder = APP_DIR/'images'; folder.mkdir(parents=True, exist_ok=True)
             result = []
             for source in paths:
@@ -438,6 +443,7 @@ class StudioController(QObject):
                 target = folder/(digest+p.suffix.lower())
                 if not target.exists(): copy_optimized_image(p, target)
                 result.append(str(target))
+            self.validate_sequences([result], budget, side)
             return result
         def success(result):
             self.record_change()
@@ -448,29 +454,48 @@ class StudioController(QObject):
             self.sets[role] = result; self.store.clear(); self.switch_mode('2D'); self.remember_avatar()
             self.notice.emit('Imagens 2D importadas.')
             if role == 'idle': self.imported.emit()
-        self.submit(copy_images, success)
+        return self.submit(copy_images, success)
+
+    @staticmethod
+    def validate_sequences(groups, budget, side):
+        store = AssetStore(); store.configure(budget, side)
+        for paths in groups:
+            if paths: store.load(paths)
+        store.clear()
 
     def import_folder(self, path):
-        self.submit(lambda: import_avatar_folder(path, Path(path).name), self.use_sets)
+        budget, side = self.store.max_bytes, self.store.max_side
+        def worker():
+            result = import_avatar_folder(path, Path(path).name)
+            self.validate_sequences(result.values(), budget, side)
+            return result
+        return self.submit(worker, self.use_sets)
 
-    def import_pose_set(self, poses):
+    def import_pose_set(self, poses, animation_fps=None):
         from copy import deepcopy
         poses = deepcopy(poses)
+        fps = self.settings.animation_fps if animation_fps is None else Settings.from_dict({'animation_fps': animation_fps}).animation_fps
+        budget, side = self.store.max_bytes, self.store.max_side
         def worker():
             folder = APP_DIR/'images'; folder.mkdir(parents=True, exist_ok=True); result = {}
             for role, paths in poses.items():
                 if role not in ('idle', 'talk', 'blink', 'happy', 'angry', 'sad', 'relaxed', 'surprised'): continue
+                if len(paths) > 256: raise ValueError('Use até 256 arquivos por pose.')
                 result[role] = []
-                for source in paths[:256]:
+                for source in paths:
                     source = Path(source)
+                    if source.is_file() and source.resolve().parent == folder.resolve():
+                        result[role].append(str(source)); continue
                     with source.open('rb') as stream: digest = hashlib.file_digest(stream, 'sha256').hexdigest()[:16]
                     target = folder/(digest+source.suffix.lower())
                     if not target.exists(): copy_optimized_image(source, target)
                     result[role].append(str(target))
             if not result.get('idle'): raise ValueError('Adicione uma imagem parada.')
+            self.validate_sequences(result.values(), budget, side)
             return result
         def success(result):
             self.use_sets({role: result.get(role, []) for role in ('idle','talk','blink')})
+            self.settings.animation_fps = fps
             self.preferences['expressions2d'] = {key: paths for key, paths in result.items() if key not in ('idle','talk','blink') and paths}
             self.remember_avatar(); self.defer_save(); self.changed.emit(); self.notice.emit('Personagem 2D montado e salvo.')
         return self.submit(worker, success, 'Montando personagem 2D…')

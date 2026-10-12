@@ -8,9 +8,9 @@ import zipfile
 from PIL import Image
 from avatarcam.core.settings import APP_DIR, Settings
 from avatarcam.core.avatar_config import portable_setup
+from avatarcam.core.image_sequence import IMAGE_EXTS, natural_paths
 
 AVATAR_DIR = APP_DIR / 'avatars'
-IMAGE_EXTS = {'.png', '.gif'}
 MAX_IMAGE_SIDE = 1600
 MAX_PACK_BYTES = 256 * 1024 * 1024
 EXPRESSION_KEYS = ('happy', 'angry', 'sad', 'relaxed', 'surprised', 'neutral')
@@ -33,7 +33,7 @@ def safe_name(name: str) -> str:
 def images_from_folder(folder: Path) -> list[str]:
     if not folder.is_dir():
         return []
-    return [str(p) for p in sorted(folder.iterdir()) if p.is_file() and p.suffix.lower() in IMAGE_EXTS]
+    return natural_paths(str(p) for p in folder.iterdir() if p.is_file() and p.suffix.lower() in IMAGE_EXTS)
 
 
 def copy_optimized_image(src: Path, dest: Path) -> None:
@@ -42,7 +42,7 @@ def copy_optimized_image(src: Path, dest: Path) -> None:
     with Image.open(src) as image:
         if image.width * image.height > 32_000_000:
             raise ValueError(f'Imagem muito grande: {src.name}')
-        if dest.suffix.lower() == '.gif':
+        if image.format in ('GIF', 'WEBP') or getattr(image, 'is_animated', False):
             shutil.copy2(src, dest)
         else:
             image = image.convert('RGBA')
@@ -69,7 +69,8 @@ def import_avatar_folder(source: str, name: str) -> dict:
         raise ValueError('Pasta de avatar nao encontrada.')
     sources = {key: next((source_path / alias for alias in aliases if (source_path / alias).is_dir()), None) for key, aliases in FOLDERS.items()}
     if not any(images_from_folder(sources[key]) for key in ('idle', 'talk') if sources[key]):
-        raise ValueError('Use subpastas idle e/ou talk (fala) com imagens.')
+        if images_from_folder(source_path): sources['idle'] = source_path
+        else: raise ValueError('Escolha uma pasta com PNG, GIF ou WebP, ou subpastas idle / talk / blink.')
     AVATAR_DIR.mkdir(parents=True, exist_ok=True)
     stage = Path(tempfile.mkdtemp(prefix='.import-', dir=AVATAR_DIR))
     try:
@@ -78,7 +79,9 @@ def import_avatar_folder(source: str, name: str) -> dict:
             destination = stage / key
             destination.mkdir()
             if folder:
-                for path in images_from_folder(folder):
+                paths = images_from_folder(folder)
+                if len(paths) > 256: raise ValueError('Use até 256 arquivos por pose.')
+                for path in paths:
                     src = Path(path)
                     total += src.stat().st_size
                     if total > MAX_PACK_BYTES:

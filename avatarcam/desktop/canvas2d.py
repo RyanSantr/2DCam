@@ -96,7 +96,7 @@ class Avatar2D(QWidget):
             painter.drawPixmap(QRectF(-width/2,-height/2,width,height),pixmap,QRectF(pixmap.rect()))
             painter.restore()
         else:
-            painter.setPen(QColor('#a2b4ca')); painter.drawText(self.rect(),Qt.AlignmentFlag.AlignCenter,'Importe imagens PNG ou GIF para começar')
+            painter.setPen(QColor('#a2b4ca')); painter.drawText(self.rect(),Qt.AlignmentFlag.AlignCenter,'Importe PNG, GIF ou WebP para começar')
         if s.pet_enabled and c.sets.get('pet'):
             pet = self.frame('pet_talk' if speaking and c.sets.get('pet_talk') else 'pet',seconds)
             if pet:

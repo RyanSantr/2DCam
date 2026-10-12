@@ -2,10 +2,11 @@
 from pathlib import Path
 import math
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QImageReader, QPixmap, QMovie
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton,
-    QComboBox, QSlider, QDialogButtonBox, QFileDialog, QScrollArea, QWidget, QStackedWidget)
+    QComboBox, QSlider, QSpinBox, QDialogButtonBox, QFileDialog, QScrollArea, QWidget, QStackedWidget)
 from avatarcam.desktop.creative import EXPRESSION_ACTIONS
+from avatarcam.core.image_sequence import IMAGE_FILTER, image_paths
+from avatarcam.desktop.sequence_preview import SequencePreview
 
 NAMES = dict(neutral='Neutro', happy='Feliz', angry='Bravo', sad='Triste', relaxed='Calmo', surprised='Surpreso', mouth='Boca', blink='Piscar')
 
@@ -110,12 +111,17 @@ class PoseSlot(QPushButton):
         self.setMinimumHeight(40); self.clicked.connect(self.choose)
 
     def choose(self):
-        paths, _ = QFileDialog.getOpenFileNames(self, 'Imagens para '+self.name, '', 'Imagens (*.png *.gif)')
+        paths, _ = QFileDialog.getOpenFileNames(self, 'Imagens para '+self.name, '', IMAGE_FILTER)
         if paths: self.assign(paths)
 
+    def choose_folder(self):
+        path = QFileDialog.getExistingDirectory(self, 'Sequência para ' + self.name)
+        if path: self.assign([path])
+
     def assign(self, paths):
-        valid = [str(Path(path)) for path in paths if Path(path).suffix.lower() in ('.png', '.gif') and Path(path).is_file()][:256]
+        valid = image_paths(paths)
         if not valid: return
+        if len(valid) > 256: self.owner.error.setText('Use até 256 arquivos por pose.'); return
         self.owner.poses[self.role] = valid; self.setText(self.name+' · '+str(len(valid))+' arquivo(s)'); self.owner.preview(self.role)
 
     def dragEnterEvent(self, event):
@@ -130,45 +136,57 @@ class PoseEditor(QDialog):
         super().__init__(owner); self.owner = owner; self.setWindowTitle('Montar personagem 2D'); self.resize(720, 620)
         c = owner.controller; self.poses = {key: list(paths) for key, paths in c.sets.items() if key in ('idle', 'talk', 'blink')} if c.mode == '2D' else {}
         if c.mode == '2D': self.poses.update({key: list(paths) for key, paths in c.preferences['expressions2d'].items()})
-        self.movie = None; layout = QVBoxLayout(self)
-        layout.addWidget(text('Arraste PNG/GIF para cada pose ou clique para escolher. Teste as poses antes de salvar. A imagem parada é obrigatória.'))
+        layout = QVBoxLayout(self)
+        layout.addWidget(text('Cada pose aceita PNG, GIF ou WebP, um ou vários arquivos. Arraste uma sequência ou uma pasta; os nomes seguem a ordem 1, 2, 10. Parado é obrigatório.'))
         body = QHBoxLayout(); slots = QVBoxLayout(); self.slots = {}
         for role, name in [('idle', 'Parado'), ('talk', 'Falando'), ('blink', 'Piscando'), *[(key, NAMES[key]) for key in ('happy', 'angry', 'sad', 'relaxed', 'surprised')]]:
             row = QHBoxLayout(); slot = PoseSlot(role, name, self); row.addWidget(slot)
             if self.poses.get(role): slot.setText(name+' · '+str(len(self.poses[role]))+' arquivo(s)')
+            row.addWidget(push('Pasta', slot.choose_folder))
             row.addWidget(push('▶', lambda r=role: self.preview(r)))
             row.addWidget(push('×', lambda r=role: self.clear_role(r)))
             slots.addLayout(row); self.slots[role] = slot
-        body.addLayout(slots, 1); self.image = QLabel('Escolha uma pose'); self.image.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        body.addLayout(slots, 1); self.image = SequencePreview(self); self.image.set_fps(c.settings.animation_fps); self.image.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.image.setMinimumSize(280, 280); self.image.setStyleSheet('background:#1a1c20;border-radius:8px;'); body.addWidget(self.image, 1); layout.addLayout(body, 1)
+        playback = QHBoxLayout(); self.frame_count = text(''); playback.addWidget(self.frame_count, 1)
+        self.pause_button = push('Pausar prévia', self.pause_preview); self.pause_button.setEnabled(False); playback.addWidget(self.pause_button)
+        playback.addWidget(push('Reiniciar', self.restart_preview)); layout.addLayout(playback)
+        speed = QHBoxLayout(); speed.addWidget(text('Velocidade das imagens em sequência'))
+        self.fps = QSpinBox(); self.fps.setRange(1, 30); self.fps.setSuffix(' quadros/s'); self.fps.setValue(c.settings.animation_fps)
+        self.fps.setAccessibleName('Velocidade da sequência'); self.fps.valueChanged.connect(self.change_fps); speed.addWidget(self.fps); layout.addLayout(speed)
+        layout.addWidget(text('GIF, WebP e PNG animados mantêm seus tempos originais. Até 256 quadros por pose; reduza o tamanho se a animação for pesada.'))
         self.error = text(''); layout.addWidget(self.error)
+        self.image.failed.connect(self.error.setText); self.image.progress.connect(self.show_frame)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
         buttons.button(QDialogButtonBox.StandardButton.Save).setText('Salvar'); buttons.button(QDialogButtonBox.StandardButton.Cancel).setText('Cancelar')
         buttons.accepted.connect(self.save); buttons.rejected.connect(self.reject); layout.addWidget(buttons)
-        self.finished.connect(lambda _: self.stop_movie()); self.preview('idle')
+        self.finished.connect(lambda _: self.image.release()); self.preview('idle')
 
     def clear_role(self, role):
         self.poses.pop(role, None); self.slots[role].setText(self.slots[role].name); self.preview(role)
 
-    def stop_movie(self):
-        if self.movie: self.movie.stop(); self.movie.deleteLater(); self.movie = None
+    def show_frame(self, index, total):
+        self.frame_count.setText(f'Quadro {index} de {total}')
+        self.pause_button.setEnabled(total > 1)
+
+    def pause_preview(self):
+        self.image.toggle_pause(); self.pause_button.setText('Reproduzir prévia' if self.image.paused else 'Pausar prévia')
+
+    def restart_preview(self):
+        self.image.restart(); self.pause_button.setText('Pausar prévia')
+
+    def change_fps(self, fps):
+        self.image.set_fps(fps); self.pause_button.setText('Pausar prévia')
 
     def preview(self, role):
-        self.stop_movie(); paths = self.poses.get(role, [])
-        if not paths: self.image.clear(); self.image.setText('Esta pose está vazia.'); return
-        reader = QImageReader(paths[0]); size = reader.size()
-        if not size.isValid() or size.width()*size.height() > 32_000_000:
-            self.image.setText('Imagem inválida ou grande demais.'); return
-        size = size.scaled(320, 400, Qt.AspectRatioMode.KeepAspectRatio)
-        if paths[0].lower().endswith('.gif'):
-            self.movie = QMovie(paths[0], parent=self); self.movie.setScaledSize(size); self.movie.setCacheMode(QMovie.CacheMode.CacheNone)
-            self.image.setMovie(self.movie); self.movie.start()
-        else:
-            reader.setScaledSize(size); self.image.setPixmap(QPixmap.fromImage(reader.read()))
+        self.image.stop(); self.frame_count.clear(); self.error.clear(); self.pause_button.setEnabled(False); self.pause_button.setText('Pausar prévia')
+        paths = self.poses.get(role, [])
+        if not paths: self.image.setText('Esta pose está vazia.'); return
+        self.image.play(list(paths))
 
     def save(self):
         if not self.poses.get('idle'): self.error.setText('Adicione pelo menos uma imagem em Parado.'); return
-        if self.owner.controller.import_pose_set(self.poses): self.accept()
+        if self.owner.controller.import_pose_set(self.poses, self.fps.value()): self.accept()
 
 
 class AvatarWizard(QDialog):

@@ -4,7 +4,7 @@ Aplicativo para Windows com avatares 2D e 3D, resposta à voz e rastreamento fac
 
 ## Baixar e abrir
 
-**[Baixar 2DCam Studio 3.7 para Windows](https://github.com/RyanSantr/2DCam/releases/download/v3.7.0/2DCam-Studio-3.7.exe)**
+**[Baixar 2DCam Studio 3.8 para Windows](https://github.com/RyanSantr/2DCam/releases/download/v3.8.0/2DCam-Studio-3.8.exe)**
 
 Abra o EXE. Não precisa instalar Python nem abrir um navegador. Na primeira abertura, aguarde a preparação dos componentes; as próximas usam a cópia já preparada. Requer Windows 10/11 de 64 bits e os componentes .NET Framework do Windows.
 
@@ -12,11 +12,15 @@ A personagem 3D de exemplo acompanha o app. Câmera e microfone começam desliga
 
 ## Usar
 
-1. Clique em **Importar avatar** ou arraste um PNG, GIF, VRM, GLB ou `.avatarpack`.
+1. Clique em **Importar avatar** ou arraste PNG, GIF, WebP, VRM, GLB ou `.avatarpack`. Para uma sequência 2D, selecione vários arquivos ou arraste uma pasta.
 2. Ative o microfone para responder à voz ou **Ligar rastreamento** para acompanhar seu rosto. Use **Calibrar posição neutra** olhando para a câmera.
 3. Ajuste o enquadramento com o mouse e a roda. Salve a posição e abra **Saída OBS**.
 
 Na Biblioteca, você pode montar poses 2D, organizar favoritos e salvar perfis. Em Avatar, pode preparar o personagem, editar expressões disponíveis e usar gestos. **Ctrl+Z** desfaz alterações; **F8** mostra os controles e **F9** pausa.
+
+**Animações 2D:** use **Biblioteca → Poses e expressões 2D → Montar personagem visualmente**. Cada pose (parado, falando, piscando e emoções) aceita um ou vários GIFs, PNGs e WebPs. Sequências seguem a ordem numérica dos nomes: `1`, `2`, `10`. A prévia permite pausar, reiniciar e ajustar imagens fixas de 1 a 30 quadros/s. GIF, WebP e PNG animados mantêm seus tempos originais, inclusive misturados com imagens fixas. A velocidade escolhida acompanha o personagem e seu pacote.
+
+Uma pasta pode conter os quadros diretamente ou usar subpastas `idle`, `talk` e `blink`. Até 256 quadros por pose, dentro do limite de memória do modo de desempenho. Se a animação ultrapassar esse limite, reduza dimensões ou quadros antes de importar.
 
 **Sem webcam:** ative o microfone e use **Avatar → Usar sem webcam** para ajustar os movimentos suaves. **Testar movimentos sem câmera** permite conferir cabeça, olhar, boca e piscar; o teste automático dura 12 segundos e encerra sozinho. Ele não liga dispositivos. Fechar a prévia devolve o personagem ao funcionamento normal.
 
@@ -32,7 +36,7 @@ Para transparência, o app também oferece saída Spout2; o OBS precisa do [comp
 
 ### Formatos e dados
 
-PNG/GIF usam poses e movimento da imagem. VRM e GLB usam os recursos presentes no modelo; boca, olhos e expressões dependem dele. VRM/GLB precisam de recursos incorporados, até 128 MiB, sem Draco, Meshopt ou KTX2. **Live2D ainda não está disponível nesta versão.**
+PNG/GIF/WebP usam poses e movimento da imagem. VRM e GLB usam os recursos presentes no modelo; boca, olhos e expressões dependem dele. VRM/GLB precisam de recursos incorporados, até 128 MiB, sem Draco, Meshopt ou KTX2. **Live2D ainda não está disponível nesta versão.**
 
 Personagens e configurações ficam em `%USERPROFILE%\.avatarcam_2d`. Os componentes preparados ficam em `%LOCALAPPDATA%\2DCam\runtime`. O rastreamento é processado localmente, sem enviar ou gravar imagens da câmera. Instruções e créditos também estão em **Ajuda → Sobre, ajuda e créditos**.
 
@@ -43,7 +47,7 @@ Personagens e configurações ficam em `%USERPROFILE%\.avatarcam_2d`. Os compone
 - `web3d-build/`: construção do renderizador incorporado.
 - `third-party-licenses/`: licenças dos componentes e modelos incluídos.
 
-No Windows, com **Python 3.12 x64**, execute `scripts/run.bat`. Para gerar `dist/2DCam-Studio-3.7.exe`, execute `scripts/build_exe.bat`.
+No Windows, com **Python 3.12 x64**, execute `scripts/run.bat`. Para gerar `dist/2DCam-Studio-3.8.exe`, execute `scripts/build_exe.bat`.
 
 Testes: `.venv\Scripts\python -m unittest discover -s tests -v`. Para alterar o renderizador, use Node 22 e execute `npm ci --ignore-scripts` e `npm run build` dentro de `web3d-build`. O renderizador pronto já acompanha o código.
 

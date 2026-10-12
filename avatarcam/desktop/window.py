@@ -16,6 +16,7 @@ from avatarcam.desktop.performance import PRESETS, ProcessUsage
 from avatarcam.audio.microphone import MicrophoneInput
 from avatarcam.core.persistence import atomic_write_text
 from avatarcam.core.settings import APP_DIR
+from avatarcam.core.image_sequence import IMAGE_EXTS, IMAGE_FILTER
 from avatarcam.desktop.output import OUTPUT_SIZES, output_size
 from avatarcam.desktop.shortcuts import LiveShortcuts, SHORTCUTS, shortcut_rows, validate_bindings
 from avatarcam.desktop.library import avatar_id
@@ -304,6 +305,7 @@ class StudioWindow(QMainWindow):
         self.refresh_recent()
         assets=details('Poses e expressões 2D',layout)
         assets.addWidget(button('Montar personagem visualmente', self.edit_poses, True))
+        assets.addWidget(label('Cada pose aceita uma animação ou uma sequência de PNG, GIF e WebP.','muted',True))
         for role,text in (('idle','Imagem / animação parada'),('talk','Imagem / animação falando'),('blink','Imagem / animação piscando'),('pet','Adicionar pet')):
             assets.addWidget(button(text,lambda r=role:self.choose_2d(r)))
         assets.addWidget(button('Vincular expressão 2D',self.bind_expression))
@@ -673,23 +675,29 @@ class StudioWindow(QMainWindow):
                 widget.blockSignals(True); widget.setChecked(value); widget.blockSignals(False)
 
     def choose_2d(self,role='idle'):
-        paths,_=QFileDialog.getOpenFileNames(self,'Importar imagens 2D','','Imagens (*.png *.gif)')
+        paths,_=QFileDialog.getOpenFileNames(self,'Importar imagens ou sequência 2D','',IMAGE_FILTER)
         if paths: self.controller.import_2d(paths,role)
     def choose_3d(self):
         path,_=QFileDialog.getOpenFileName(self,'Importar avatar 3D','','Avatar 3D (*.vrm *.glb)')
         if path: self.controller.import_3d(path)
     def choose_any(self):
-        path,_=QFileDialog.getOpenFileName(self,'Importar avatar','','Avatares (*.vrm *.glb *.png *.gif *.avatarpack *.model3.json)')
-        if path: self.import_path(path)
+        paths,_=QFileDialog.getOpenFileNames(self,'Importar avatar ou sequência 2D','','Avatares (*.vrm *.glb *.png *.gif *.webp *.avatarpack *.model3.json)')
+        if paths: self.import_paths(paths)
+    def import_paths(self,paths):
+        if len(paths)==1: self.import_path(paths[0])
+        elif paths and all(Path(path).is_file() and Path(path).suffix.lower() in IMAGE_EXTS for path in paths):
+            self.controller.import_2d(paths)
+        else: self.show_notice('Selecione uma sequência de imagens ou um avatar por vez.')
     def import_path(self,path):
+        if Path(path).is_dir(): self.controller.import_folder(path); return
         extension=Path(path).suffix.lower()
         if extension in ('.vrm','.glb'): self.controller.import_3d(path)
         elif extension=='.avatarpack': self.controller.import_pack(path)
-        elif extension in ('.png','.gif'): self.controller.import_2d([path])
+        elif extension in IMAGE_EXTS: self.controller.import_2d([path])
         elif str(path).lower().endswith('.model3.json'): self.import_live2d(path)
-        else: self.show_notice('Formato não suportado. Use PNG, GIF, VRM, GLB ou .avatarpack.')
+        else: self.show_notice('Formato não suportado. Use PNG, GIF, WebP, VRM, GLB ou .avatarpack.')
     def choose_folder(self):
-        path=QFileDialog.getExistingDirectory(self,'Pasta com idle / talk / blink')
+        path=QFileDialog.getExistingDirectory(self,'Pasta de sequência ou com idle / talk / blink')
         if path: self.controller.import_folder(path)
     def choose_pack(self):
         path,_=QFileDialog.getOpenFileName(self,'Importar pacote','','Pacote (*.avatarpack)')
@@ -703,7 +711,7 @@ class StudioWindow(QMainWindow):
         names={'Feliz':'happy','Bravo':'angry','Triste':'sad','Calmo':'relaxed','Surpreso':'surprised'}
         name,ok=QInputDialog.getItem(self,'Expressão 2D','Quando esta expressão estiver ativa:',list(names),0,False)
         if not ok: return
-        paths,_=QFileDialog.getOpenFileNames(self,'Imagens para '+name,'','Imagens (*.png *.gif)')
+        paths,_=QFileDialog.getOpenFileNames(self,'Imagens para '+name,'',IMAGE_FILTER)
         if not paths: return
         if self.controller.jobs:
             self.show_notice('Aguarde a importação atual antes de vincular uma expressão.'); return
@@ -850,8 +858,8 @@ class StudioWindow(QMainWindow):
     def dragEnterEvent(self,event):
         if event.mimeData().hasUrls(): event.acceptProposedAction()
     def dropEvent(self,event):
-        urls=event.mimeData().urls()
-        if urls and urls[0].isLocalFile(): self.import_path(urls[0].toLocalFile())
+        paths=[url.toLocalFile() for url in event.mimeData().urls() if url.isLocalFile()]
+        if paths: self.import_paths(paths); event.acceptProposedAction()
     def closeEvent(self,event):
         self.quitting=True; self.stats_timer.stop(); self.sync_timer.stop(); self.live_shortcuts.close()
         if self.motion_dialog: self.motion_dialog.close()
