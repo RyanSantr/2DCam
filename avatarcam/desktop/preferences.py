@@ -29,6 +29,8 @@ def sanitize_preferences(value):
     result['hide_controls'] = result.get('hide_controls') is True
     result['output_on_top'] = result.get('output_on_top') is True
     result['global_shortcuts'] = result.get('global_shortcuts') is True
+    from avatarcam.desktop.obs_sync import obs_config
+    result['obs'] = obs_config(result.get('obs'))
     from avatarcam.core.avatar_config import motion_config
     result.update(motion_config(result))
     from avatarcam.desktop.shortcuts import validate_bindings

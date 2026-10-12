@@ -24,6 +24,7 @@ from avatarcam.desktop.shortcuts import (LiveShortcuts, SHORTCUTS, shortcut_rows
 from avatarcam.desktop.library import avatar_id
 from avatarcam.desktop.creative import GESTURES
 from avatarcam.desktop.transparent import TransparentOutput
+from avatarcam.desktop.obs_sync import ObsSync, obs_config, protect_password
 
 
 def label(text, name=None, wrap=False):
@@ -58,8 +59,9 @@ def details(title, parent_layout):
 class CaptureWindow(QMainWindow):
     """A mesma superficie do estudio e transferida, sem copiar o avatar."""
     def __init__(self, controller, parent):
-        super().__init__(parent); self.owner=parent; self.controller=controller
+        super().__init__(); self.owner=parent; self.controller=controller
         self.setWindowTitle('2DCam - Avatar')
+        self.setWindowIcon(parent.windowIcon())
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         self.stack=QStackedWidget(); self.setCentralWidget(self.stack)
         self.hosts=[]
@@ -72,7 +74,7 @@ class CaptureWindow(QMainWindow):
         # quando um avatar 3D é inserido depois de uma cena somente 2D.
         self.surface_guard=QQuickWidget(self); self.surface_guard.resize(1,1); self.surface_guard.move(-2,-2)
         self.shortcuts=[]
-        for chord,action,_ in shortcut_rows(controller.preferences['shortcut_bindings'], controller.settings.profiles or {}):
+        for chord,action,_ in shortcut_rows(controller.preferences['shortcut_bindings'], parent.shortcut_scenes()):
             shortcut=QShortcut(QKeySequence(chord),self); shortcut.setAutoRepeat(False)
             shortcut.setEnabled(not controller.preferences['global_shortcuts'])
             shortcut.activated.connect(lambda value=action:parent.handle_live_shortcut(value))
@@ -90,6 +92,10 @@ class CaptureWindow(QMainWindow):
     def closeEvent(self,event):
         self.owner.return_output(self); event.accept()
 
+    def changeEvent(self,event):
+        super().changeEvent(event)
+        if event.type()==QEvent.Type.WindowStateChange: self.owner.update_render_visibility()
+
 
 class StudioWindow(QMainWindow):
     def __init__(self):
@@ -98,6 +104,10 @@ class StudioWindow(QMainWindow):
         self.controller.remember_avatar()
         self.device_signature=-1
         self.avatar3d=None; self.current_destination=None; self.quitting=False
+        self.obs_sync=ObsSync(self); self.obs_dialog=None; self.last_obs_link=None
+        self.obs_apply_timer=QTimer(self); self.obs_apply_timer.setSingleShot(True); self.obs_apply_timer.timeout.connect(self.apply_obs_scene)
+        self.obs_sync.program_changed.connect(self.schedule_obs_scene)
+        self.obs_sync.availability_changed.connect(self.obs_availability)
         self.last_camera_frame=None
         self.live_shortcuts=LiveShortcuts(self); self.live_shortcuts.triggered.connect(self.handle_live_shortcut,Qt.ConnectionType.QueuedConnection)
         self.setWindowTitle('2DCam Studio')
@@ -128,6 +138,7 @@ class StudioWindow(QMainWindow):
         self.scene_combo=QComboBox(); self.scene_combo.setMinimumWidth(120); scenes.addWidget(self.scene_combo,1)
         self.scene_combo.activated.connect(lambda index:self.load_profile_name(self.scene_combo.itemData(index)))
         scenes.addWidget(button('Salvar cena',self.save_profile)); center.addLayout(scenes)
+        scenes.addWidget(button('Vincular ao OBS',self.open_obs))
         self.preview=QStackedWidget(); self.preview.setMinimumHeight(250)
         self.studio_hosts=[]
         for _ in range(2):
@@ -169,12 +180,16 @@ class StudioWindow(QMainWindow):
         self.sync()
         self.controller.inputs.request_scan()
         QTimer.singleShot(600, self.recover_session)
+        QTimer.singleShot(800, self.start_obs)
+
+    def shortcut_scenes(self):
+        return () if self.obs_sync.ready else (self.controller.settings.profiles or {})
 
     def rebuild_shortcuts(self):
         for shortcut in self.local_live_shortcuts:
             shortcut.setEnabled(False); shortcut.deleteLater()
         self.local_live_shortcuts=[]
-        for chord,action,_ in shortcut_rows(self.controller.preferences['shortcut_bindings'], self.controller.settings.profiles or {}):
+        for chord,action,_ in shortcut_rows(self.controller.preferences['shortcut_bindings'], self.shortcut_scenes()):
             shortcut=QShortcut(QKeySequence(chord),self)
             shortcut.setAutoRepeat(False)
             shortcut.activated.connect(lambda value=action:self.handle_live_shortcut(value))
@@ -184,7 +199,7 @@ class StudioWindow(QMainWindow):
             for shortcut in self.capture_window.shortcuts:
                 shortcut.setEnabled(False); shortcut.deleteLater()
             self.capture_window.shortcuts=[]
-            for chord,action,_ in shortcut_rows(self.controller.preferences['shortcut_bindings'], self.controller.settings.profiles or {}):
+            for chord,action,_ in shortcut_rows(self.controller.preferences['shortcut_bindings'], self.shortcut_scenes()):
                 shortcut=QShortcut(QKeySequence(chord),self.capture_window); shortcut.setAutoRepeat(False)
                 shortcut.setEnabled(not self.live_shortcuts.enabled)
                 shortcut.activated.connect(lambda value=action:self.handle_live_shortcut(value))
@@ -395,6 +410,11 @@ class StudioWindow(QMainWindow):
         self.output_on_top=QCheckBox('Saída sempre no topo'); self.output_on_top.setChecked(self.controller.preferences['output_on_top'])
         self.output_on_top.toggled.connect(self.change_output_top); output.addWidget(self.output_on_top)
         output.addWidget(button('Como capturar no OBS',self.obs_help))
+        output.addWidget(button('Minimizar só os controles',self.showMinimized))
+        obs=group('Cenas do OBS',layout)
+        self.obs_status=label(self.obs_sync.status,'muted',True); self.obs_status.setTextFormat(Qt.TextFormat.PlainText); obs.addWidget(self.obs_status)
+        self.obs_sync.status_changed.connect(self.obs_status.setText)
+        obs.addWidget(button('Conectar e vincular cenas',self.open_obs))
         self.transparent_button = button('Ligar saída transparente', self.toggle_transparent); output.addWidget(self.transparent_button)
         output.addWidget(label('Spout2: preserva transparência. Requer o complemento Spout2 no OBS. Até 640 px / 24 FPS; começa desligado.', 'muted', True))
         shortcuts=details('Atalhos de live',layout)
@@ -443,7 +463,7 @@ class StudioWindow(QMainWindow):
             self.capture_window.setGeometry(geometry); self.capture_window.show()
 
     def configure_live_shortcuts(self,enabled):
-        success=self.live_shortcuts.set_enabled(enabled,self.controller.preferences['shortcut_bindings'],self.controller.settings.profiles or {})
+        success=self.live_shortcuts.set_enabled(enabled,self.controller.preferences['shortcut_bindings'],self.shortcut_scenes())
         if not success:
             self.global_shortcuts.blockSignals(True); self.global_shortcuts.setChecked(False); self.global_shortcuts.blockSignals(False)
             self.show_notice('Atalhos globais indisponíveis. Os atalhos dentro do app continuam ativos.')
@@ -489,12 +509,15 @@ class StudioWindow(QMainWindow):
             self.controller.preferences['shortcut_bindings']=bindings
             self.controller.defer_save(); dialog.accept()
         buttons.accepted.connect(save); layout.addWidget(buttons)
-        existing=[(shortcut,shortcut.isEnabled()) for shortcut in self.findChildren(QShortcut)]
+        owned=self.findChildren(QShortcut)+(self.capture_window.findChildren(QShortcut) if self.capture_window else [])
+        existing=[(shortcut,shortcut.isEnabled()) for shortcut in owned]
         self.live_shortcuts.close()
         for shortcut,_ in existing: shortcut.setEnabled(False)
         try: dialog.exec()
         finally:
-            for shortcut,enabled in existing: shortcut.setEnabled(enabled)
+            for shortcut,enabled in existing:
+                try: shortcut.setEnabled(enabled)
+                except RuntimeError: pass  # A reconexão do OBS pode ter recriado estes atalhos.
             self.refresh_profiles()
             self.rebuild_shortcuts()
             self.shortcuts_dialog=None; dialog.deleteLater()
@@ -513,7 +536,7 @@ class StudioWindow(QMainWindow):
             if button is not None and not button.isEnabled(): self.show_notice('Esta expressão não está disponível neste avatar.'); return
             self.controller.command('expression',key)
         elif action.startswith('gesture:'): self.controller.play_gesture(action.split(':',1)[1])
-        elif action.startswith(SCENE_PREFIX): self.load_profile_name(action[len(SCENE_PREFIX):])
+        elif action.startswith(SCENE_PREFIX) and not self.obs_sync.ready: self.load_profile_name(action[len(SCENE_PREFIX):])
 
     def obs_help(self):
         QMessageBox.information(self,'Capturar no OBS','1. Abra a saída do avatar.\n2. No OBS, adicione Captura de janela.\n3. Selecione 2DCam - Avatar.\n4. Use o método Windows 10 (1903 ou superior) se Automático falhar.\n5. Desative Capturar cursor e ative Área do cliente.\n6. Adicione o filtro Chroma Key para remover o fundo verde/azul.\n\nMantenha a janela de saída aberta e sem minimizar. Para poupar recursos, use o modo Econômico e oculte os controles.\n\nA captura depende do Windows, da GPU e do OBS. Guia oficial: obsproject.com/kb/window-capture-sources')
@@ -875,6 +898,57 @@ class StudioWindow(QMainWindow):
             load_profile(self.controller,name); self.sync_profile_controls(); self.refresh_profiles()
             self.show_notice('Cena: '+name)
         except Exception as exc: self.show_notice(str(exc))
+
+    def obs_password(self):
+        config=obs_config(self.controller.preferences.get('obs'))
+        if not config['remember'] or not config['secret']: return ''
+        try: return protect_password(config['secret'],decrypt=True)
+        except (OSError,ValueError,UnicodeError): return ''
+
+    def start_obs(self):
+        if self.quitting: return
+        config=obs_config(self.controller.preferences.get('obs'))
+        if config['enabled']: self.obs_sync.connect_obs(config['port'],self.obs_password())
+
+    def open_obs(self):
+        from avatarcam.desktop.obs_dialog import ObsDialog
+        if self.obs_dialog: self.obs_dialog.raise_(); return
+        dialog=ObsDialog(self); self.obs_dialog=dialog
+        try: dialog.exec()
+        finally: self.obs_dialog=None; dialog.deleteLater(); self.schedule_obs_scene()
+
+    def disconnect_obs(self):
+        self.controller.preferences['obs']['enabled']=False; self.controller.defer_save()
+        self.obs_sync.disconnect_obs(); self.obs_apply_timer.stop(); self.last_obs_link=None
+
+    def obs_availability(self,ready):
+        self.scene_combo.setToolTip('A cena em programa do OBS escolhe o personagem vinculado.' if ready else 'Escolher uma cena salva do 2DCam.')
+        if self.quitting: return
+        self.last_obs_link=None
+        self.rebuild_shortcuts()
+        if not ready: self.obs_apply_timer.stop()
+
+    def set_obs_link(self,key,name):
+        config=obs_config(self.controller.preferences.get('obs'))
+        config['links'][key]=name; self.controller.preferences['obs']=obs_config(config)
+        self.controller.defer_save(); self.last_obs_link=None; self.schedule_obs_scene()
+
+    def schedule_obs_scene(self):
+        if self.obs_sync.ready and not self.quitting: self.obs_apply_timer.start(80)
+
+    def apply_obs_scene(self):
+        if self.quitting or not self.obs_sync.ready: return
+        if self.controller.jobs or QApplication.activeModalWidget(): self.obs_apply_timer.start(200); return
+        names=self.controller.settings.profiles or {}; config=obs_config(self.controller.preferences.get('obs'))
+        target=self.obs_sync.target(config['links'],names)
+        if not target: return
+        link=(self.obs_sync.program['key'],target)
+        if link==self.last_obs_link and self.controller.settings.active_profile==target: return
+        try:
+            from avatarcam.desktop.profiles import load_profile
+            load_profile(self.controller,target); self.sync_profile_controls(); self.refresh_profiles()
+            self.last_obs_link=link; self.show_notice('OBS → '+target)
+        except (ValueError,OSError) as error: self.show_notice('Cena do OBS: '+str(error))
     def delete_profile(self):
         name=self.profile_combo.currentText()
         if not name: return
@@ -934,6 +1008,8 @@ class StudioWindow(QMainWindow):
         if paths: self.import_paths(paths); event.acceptProposedAction()
     def closeEvent(self,event):
         self.quitting=True; self.stats_timer.stop(); self.sync_timer.stop(); self.live_shortcuts.close()
+        self.obs_apply_timer.stop(); self.obs_sync.close()
+        if self.obs_dialog: self.obs_dialog.close()
         if self.motion_dialog: self.motion_dialog.close()
         self.transparent_output.stop()
         if self.capture_window: self.capture_window.close()

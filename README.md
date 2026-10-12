@@ -4,7 +4,7 @@ Aplicativo para Windows com avatares 2D e 3D, resposta à voz e rastreamento fac
 
 ## Baixar e abrir
 
-**[Baixar 2DCam Studio 3.9 para Windows](https://github.com/RyanSantr/2DCam/releases/download/v3.9.0/2DCam-Studio-3.9.exe)**
+**[Baixar 2DCam Studio 3.10 para Windows](https://github.com/RyanSantr/2DCam/releases/download/v3.10.0/2DCam-Studio-3.10.exe)**
 
 Abra o EXE. Não precisa instalar Python nem abrir um navegador. Na primeira abertura, aguarde a preparação dos componentes; as próximas usam a cópia já preparada. Requer Windows 10/11 de 64 bits e os componentes .NET Framework do Windows.
 
@@ -20,7 +20,7 @@ Na Biblioteca, você pode montar poses 2D, organizar favoritos e salvar cenas. E
 
 **Cenas e personagens:** prepare o personagem e clique em **Salvar cena**. Dê um nome como “Personagem 1 — Conversa”, depois prepare outro e salve “Personagem 2 — Jogo”. Cada cena guarda avatar 2D/3D, poses, velocidade da animação, enquadramento, movimentos e ajustes da saída. As nove primeiras combinações livres usam **Ctrl+Shift+1…9**. Você pode trocar ou desativar as teclas em **Configurações → Atalhos de live → Personalizar atalhos**. Os perfis de versões anteriores aparecem como cenas.
 
-A troca mantém a mesma janela **2DCam - Avatar** aberta para o OBS e carrega somente o personagem em uso. Para usar as teclas com o OBS ou um jogo em primeiro plano, ative **Usar também fora do app**. Essas cenas pertencem ao 2DCam; não trocam as cenas do OBS.
+A troca mantém a mesma janela **2DCam - Avatar** aberta para o OBS e carrega somente o personagem em uso. Com a sincronização desligada, ative **Usar também fora do app** para usar as teclas com um jogo em primeiro plano. Para acompanhar os atalhos e as cenas do OBS, configure a sincronização abaixo.
 
 **Animações 2D:** use **Biblioteca → Poses e expressões 2D → Montar personagem visualmente**. Cada pose (parado, falando, piscando e emoções) aceita um ou vários GIFs, PNGs e WebPs. Sequências seguem a ordem numérica dos nomes: `1`, `2`, `10`. A prévia permite pausar, reiniciar e ajustar imagens fixas de 1 a 30 quadros/s. GIF, WebP e PNG animados mantêm seus tempos originais, inclusive misturados com imagens fixas. A velocidade escolhida acompanha o personagem e seu pacote.
 
@@ -34,7 +34,18 @@ Para consumir menos recursos durante a transmissão, selecione **Econômico**, o
 
 ### OBS
 
-Adicione uma fonte **Captura de janela**, selecione **2DCam - Avatar** e aplique **Chroma Key** para remover o fundo verde ou azul. Mantenha a saída aberta, sem minimizar.
+Adicione uma fonte **Captura de janela**, selecione **2DCam - Avatar** e aplique **Chroma Key** para remover o fundo verde ou azul. Abra **Saída OBS** e minimize normalmente a janela de controles: o avatar continua aberto e animado em sua janela independente. Em Configurações, há também **Minimizar só os controles**. Mantenha a janela do avatar aberta, sem minimizar. **F8** ou o menu do botão direito na saída trazem os controles de volta.
+
+**Sincronizar cenas e personagens automaticamente:**
+
+1. Salve seus personagens em **Salvar cena**, no 2DCam.
+2. No OBS 28 ou posterior, abra **Ferramentas → Configurações do servidor WebSocket** e habilite o servidor. Ele já acompanha o OBS; consulte o [guia oficial](https://obsproject.com/kb/remote-control-guide).
+3. No 2DCam, clique em **Vincular ao OBS**, informe a porta (normalmente `4455`) e a senha mostradas pelo OBS e clique em **Conectar**.
+4. Para cada cena do OBS, escolha o personagem/cena do 2DCam na tabela. Os vínculos são salvos automaticamente. Se os nomes forem iguais, o vínculo funciona automaticamente; escolha **Manter personagem atual** para desativá-lo naquela cena.
+
+Agora, trocar de cena no OBS por atalho, mouse ou outro controle carrega o personagem correspondente. No **Modo Estúdio**, a troca acompanha a cena em programa, após a transição. Cenas sem vínculo mantêm o personagem atual. Com o OBS conectado, os atalhos de troca de cena próprios do 2DCam ficam suspensos para evitar conflitos; os controles e expressões continuam disponíveis. O 2DCam acompanha o OBS; escolher uma cena manualmente no 2DCam não altera o OBS.
+
+A conexão usa somente este computador. Se o OBS fechar, o app mantém o personagem e tenta reconectar. Para reconectar sozinho após reabrir o 2DCam, marque **Lembrar senha neste usuário do Windows** ao conectar. A senha salva é protegida pelo Windows e só pode ser recuperada pelo mesmo usuário. Sem essa opção, informe-a novamente ao abrir o app.
 
 Para transparência, o app também oferece saída Spout2; o OBS precisa do [complemento Spout2](https://github.com/Off-World-Live/obs-spout2-plugin/releases).
 
@@ -51,7 +62,7 @@ Personagens e configurações ficam em `%USERPROFILE%\.avatarcam_2d`. Os compone
 - `web3d-build/`: construção do renderizador incorporado.
 - `third-party-licenses/`: licenças dos componentes e modelos incluídos.
 
-No Windows, com **Python 3.12 x64**, execute `scripts/run.bat`. Para gerar `dist/2DCam-Studio-3.9.exe`, execute `scripts/build_exe.bat`.
+No Windows, com **Python 3.12 x64**, execute `scripts/run.bat`. Para gerar `dist/2DCam-Studio-3.10.exe`, execute `scripts/build_exe.bat`.
 
 Para alterar o renderizador, use Node 22 e execute `npm ci --ignore-scripts` e `npm run build` dentro de `web3d-build`. O renderizador pronto já acompanha o código. As verificações do GitHub conferem a sintaxe, o preparador do EXE e o renderizador.
 
