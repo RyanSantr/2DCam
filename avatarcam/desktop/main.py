@@ -1,18 +1,25 @@
 import os
 import sys
-from PySide6.QtWidgets import QApplication, QMessageBox
+import logging
 from avatarcam.core.settings import APP_DIR
 from avatarcam.desktop.instance import InstanceGuard
 
 
 def main():
     os.environ.setdefault('MPLCONFIGDIR',str(APP_DIR/'cache/matplotlib'))
+    logger = logging.getLogger('avatarcam')
+    logger.info('Verificando a instância do aplicativo.')
     guard=InstanceGuard(APP_DIR)
+    logger.info('Instância principal: %s', guard.primary)
     if not guard.primary:
+        notified = guard.notify()
+        logger.info('Recuperação dos controles: %s', notified)
+        if notified: return 0
+        from PySide6.QtWidgets import QApplication, QMessageBox
         app=QApplication(sys.argv)
-        if not guard.notify():
-            QMessageBox.information(None,'2DCam','O app já está aberto ou iniciando. Aguarde e tente novamente.')
+        QMessageBox.information(None,'2DCam','O app já está aberto ou iniciando. Aguarde e tente novamente.')
         return 0
+    from PySide6.QtWidgets import QApplication
     from avatarcam.desktop.webview import register_scheme
     register_scheme()
     app=QApplication(sys.argv)

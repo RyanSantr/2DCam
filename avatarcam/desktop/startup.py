@@ -45,7 +45,9 @@ def launch():
             if window and hasattr(window, 'show_notice'):
                 window.show_notice('Não foi possível concluir a ação. Os detalhes foram salvos para suporte.')
         sys.excepthook = hook
+        logging.getLogger('avatarcam').info('Carregando a entrada do aplicativo.')
         from avatarcam.desktop.main import main
+        logging.getLogger('avatarcam').info('Entrada do aplicativo carregada.')
         return main()
     except Exception as error:
         report_failure(error, Path(handler.baseFilename) if handler else None)
