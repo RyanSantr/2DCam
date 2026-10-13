@@ -2,6 +2,7 @@
 from copy import deepcopy
 import hashlib
 import os
+import unicodedata
 
 
 def avatar_id(entry):
@@ -11,6 +12,13 @@ def avatar_id(entry):
 
 def clean_name(value):
     return ' '.join(str(value).split())[:64]
+
+
+def matches_search(entry, query):
+    def normalized(text):
+        return ''.join(c for c in unicodedata.normalize('NFD', str(text).casefold())
+                       if not unicodedata.combining(c))
+    return normalized(query.strip()) in normalized(entry.get('name', ''))
 
 
 def update_library(entries, entry):

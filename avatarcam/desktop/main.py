@@ -24,6 +24,8 @@ def main():
     register_scheme()
     app=QApplication(sys.argv)
     app.setApplicationName('2DCam Studio'); app.setOrganizationName('2DCam')
+    from avatarcam.desktop.widgets import apply_theme
+    apply_theme(app)
     try:
         from PySide6.QtCore import Qt
         from PySide6.QtWidgets import QLabel

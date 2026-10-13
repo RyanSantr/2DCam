@@ -1,8 +1,10 @@
 """Ajuda e creditos acessiveis dentro do executavel."""
 from pathlib import Path
-from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QComboBox, QTextBrowser, QDialogButtonBox
+from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QTextBrowser, QDialogButtonBox
 
-VERSION = '3.11.0'
+from avatarcam.desktop.widgets import ChoiceBox as QComboBox
+
+VERSION = '3.12.0'
 ROOT = Path(__file__).resolve().parents[2]
 
 

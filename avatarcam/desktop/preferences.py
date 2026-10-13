@@ -29,6 +29,8 @@ def sanitize_preferences(value):
     result['hide_controls'] = result.get('hide_controls') is True
     result['output_on_top'] = result.get('output_on_top') is True
     result['global_shortcuts'] = result.get('global_shortcuts') is True
+    width = result.get('inspector_width', 324)
+    result['inspector_width'] = max(290, min(440, width)) if type(width) is int else 324
     from avatarcam.desktop.obs_sync import obs_config
     result['obs'] = obs_config(result.get('obs'))
     from avatarcam.core.avatar_config import motion_config

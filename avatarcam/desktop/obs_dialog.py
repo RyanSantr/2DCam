@@ -1,7 +1,8 @@
 """Conexão local e vínculos visuais das cenas do OBS."""
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
-    QSpinBox, QPushButton, QCheckBox, QTableWidget, QTableWidgetItem, QComboBox, QHeaderView)
+    QSpinBox, QPushButton, QTableWidget, QTableWidgetItem, QHeaderView)
+from avatarcam.desktop.widgets import ChoiceBox as QComboBox, ToggleBox as QCheckBox
 from avatarcam.desktop.obs_sync import obs_config, protect_password
 
 

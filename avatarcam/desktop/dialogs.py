@@ -3,10 +3,11 @@ from pathlib import Path
 import math
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton,
-    QComboBox, QSlider, QSpinBox, QDialogButtonBox, QFileDialog, QScrollArea, QWidget, QStackedWidget)
+    QSlider, QSpinBox, QDialogButtonBox, QFileDialog, QScrollArea, QWidget, QStackedWidget)
 from avatarcam.desktop.creative import EXPRESSION_ACTIONS
 from avatarcam.core.image_sequence import IMAGE_FILTER, image_paths
 from avatarcam.desktop.sequence_preview import SequencePreview
+from avatarcam.desktop.widgets import ChoiceBox as QComboBox
 
 NAMES = dict(neutral='Neutro', happy='Feliz', angry='Bravo', sad='Triste', relaxed='Calmo', surprised='Surpreso', mouth='Boca', blink='Piscar')
 
