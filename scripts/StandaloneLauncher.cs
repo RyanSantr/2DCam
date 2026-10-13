@@ -194,9 +194,7 @@ sealed class LoadingWindow : Form
             try
             {
                 status.Text = "Abrindo o personagem…";
-                using (Process child = Launcher.StartApp())
-                {
-                }
+                using (Process child = Launcher.StartApp()) { }
             }
             catch (Exception error) { Hide(); Launcher.ShowFailure(error); Launcher.ExitCode = 1; }
             Close();

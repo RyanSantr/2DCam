@@ -6,6 +6,7 @@ import re
 import subprocess
 import sys
 import zipfile
+from PyInstaller.archive.readers import CArchiveReader
 
 root=Path(__file__).resolve().parents[1]
 bundle=Path(sys.argv[1]).resolve() if len(sys.argv)>1 else root/'dist/2DCamStudio'
@@ -15,6 +16,25 @@ build=output/('launcher-build-'+version);build.mkdir(parents=True,exist_ok=True)
 assert (bundle/'2DCamStudio.exe').is_file()
 files=sorted(p for p in bundle.rglob('*') if p.is_file())
 assert files and not any(p.is_symlink() for p in files)
+
+# O pacote distribuido deve conter somente o aplicativo e seu runtime.
+private_names={'settings.json','studio-desktop.json','session-recovery.json',
+               'studio-instance.lock','obs-fixture.json'}
+for file in files:
+    relative=file.relative_to(bundle)
+    name=file.name.lower()
+    if (name in private_names or name == '.env' or name.startswith('.env.')
+        or name.startswith('verificacao_') or name in {'validacao.md','diagnostics.py'}
+        or any(part.lower() in {'tests','qa-output','studio-activation','.avatarcam_2d'}
+               for part in relative.parts)):
+        raise SystemExit('Arquivo privado ou de validacao no runtime: '+relative.as_posix())
+archive=CArchiveReader(str(bundle/'2DCamStudio.exe'))
+pyz=archive.open_embedded_archive(next(name for name in archive.toc if name.endswith('.pyz')))
+unwanted=[name for name in pyz.toc if name.startswith('avatarcam.')
+          and ('verification' in name or name == 'avatarcam.core.diagnostics')]
+if unwanted:
+    raise SystemExit('Modulos de validacao no runtime: '+', '.join(unwanted))
+
 payload=build/'payload.zip'
 with zipfile.ZipFile(payload,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=6) as archive:
     for file in files:archive.write(file,file.relative_to(bundle).as_posix())

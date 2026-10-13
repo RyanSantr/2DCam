@@ -10,7 +10,9 @@ datas += [(str(root/'third-party-licenses'), 'third-party-licenses')]
 a = Analysis([str(root/'app.py')], pathex=[str(root)], binaries=[], datas=datas,
     hiddenimports=['webrtcvad','_webrtcvad','mediapipe.tasks.python.vision.face_landmarker','SpoutGL'],
     hookspath=[str(root/'scripts/hooks')], hooksconfig={'matplotlib': {'backends': ['Agg']}},
-    runtime_hooks=[], excludes=['jax','jaxlib','tensorflow','torch','IPython','pytest','PyQt5','PyQt6'],
+    runtime_hooks=[], excludes=['jax','jaxlib','tensorflow','torch','IPython','pytest','PyQt5','PyQt6',
+        'PySide6.QtTest','avatarcam.desktop.verification','avatarcam.desktop.creative_verification',
+        'avatarcam.desktop.installation_verification','avatarcam.desktop.obs_verification','avatarcam.core.diagnostics'],
     noarchive=False, optimize=0)
 pyz = PYZ(a.pure)
 options=dict(name='2DCamStudio', debug=False, bootloader_ignore_signals=False,

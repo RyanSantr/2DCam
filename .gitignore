@@ -20,6 +20,26 @@ work/
 # Relatórios locais de verificação não fazem parte do aplicativo.
 /VERIFICACAO_*.json
 .env
+.env.*
+!.env.example
+*.pfx
+*.p12
+id_rsa*
+id_ed25519*
+session-recovery.json
+studio-activation/
+.avatarcam_2d/
+/backups/
+/logs/
+/thumbnails/
+/qa*/
+/validation*/
+/tests/
+/*-result.json
+/obs-fixture*.json
+/avatarcam/desktop/*verification.py
+/avatarcam/core/diagnostics.py
+/scripts/verify_*.py
 
 avatarcam/web3d/live2d.js
 
