@@ -30,7 +30,7 @@ Uma pasta pode conter os quadros diretamente ou usar subpastas `idle`, `talk` e 
 
 Os pacotes `.avatarpack` também preservam vínculos personalizados de expressões 3D e ajustes de movimento. Pacotes antigos continuam aceitos; use a versão 3.7 ou posterior para recuperar esses novos ajustes.
 
-**Interface:** a aba **Saída** reúne a captura e os vínculos do OBS; **Ajustes** reúne desempenho, imagem, áudio e atalhos. Arraste o separador entre a prévia e o painel para ajustar o espaço. **Ctrl+F** abre a busca na Biblioteca; **Alt+1…5** percorre as abas. Sliders mostram o valor em porcentagem, aceitam teclado e permitem Desfazer. A roda ajusta um controle somente quando ele está em foco, evitando mudanças ao rolar o painel.
+**Interface:** a aba **Saída** reúne a captura e os vínculos do OBS; **Ajustes** reúne desempenho, imagem, áudio e atalhos. Arraste o separador entre a prévia e o painel para ajustar o espaço. **Ctrl+F** abre a busca na Biblioteca; **Alt+1…5** percorre as abas; **Ctrl+Espaço** testa a fala. Se você já atribuiu uma dessas combinações a uma ação de live, ela mantém a ação personalizada. Sliders mostram o valor em porcentagem, aceitam teclado e permitem Desfazer. A roda ajusta um controle somente quando ele está em foco, evitando mudanças ao rolar o painel.
 
 Para consumir menos recursos durante a transmissão, selecione **Econômico**, oculte a prévia da câmera e use uma saída de 640 × 360 ou 960 × 540. O consumo depende do modelo e do computador.
 

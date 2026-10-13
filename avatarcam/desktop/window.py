@@ -123,11 +123,14 @@ class StudioWindow(QMainWindow):
         outer.setContentsMargins(14,10,14,10); outer.setSpacing(10)
         header=QHBoxLayout(); header.addWidget(label('2DCam','brand')); header.addSpacing(18)
         self.navigation=QButtonGroup(self)
+        self.ui_shortcuts={}
         for number,(index,text) in enumerate(((0,'Avatar'),(1,'Biblioteca'),(2,'Câmera'),(4,'Saída'),(3,'Ajustes')),1):
             nav=button(text,lambda i=index:self.select_panel(i)); nav.setObjectName('nav')
             nav.setCheckable(True); self.navigation.addButton(nav,index); header.addWidget(nav)
             nav.setToolTip(f'{text} · Alt+{number}')
-            QShortcut(QKeySequence(f'Alt+{number}'),self).activated.connect(lambda i=index:self.select_panel(i))
+            shortcut=QShortcut(QKeySequence(f'Alt+{number}'),self)
+            shortcut.activated.connect(lambda i=index:self.select_panel(i))
+            self.ui_shortcuts[f'Alt+{number}']=shortcut
         self.navigation.button(0).setChecked(True); header.addStretch()
         self.quick_mic=button('Microfone',self.controller.toggle_microphone); self.quick_mic.setCheckable(True); header.addWidget(self.quick_mic)
         self.quick_camera=button('Câmera',self.controller.toggle_tracking); self.quick_camera.setCheckable(True); header.addWidget(self.quick_camera)
@@ -162,7 +165,8 @@ class StudioWindow(QMainWindow):
         self.avatar2d=Avatar2D(self.controller); self.studio_hosts[0].layout().addWidget(self.avatar2d)
         center.addWidget(self.preview,1)
         tools=QHBoxLayout(); tools.addWidget(button('Centralizar',self.reset_camera))
-        tools.addWidget(button('Salvar posição',self.save_camera)); tools.addWidget(button('Testar fala',lambda:self.controller.command('test')))
+        tools.addWidget(button('Salvar posição',self.save_camera))
+        test_voice=button('Testar fala',lambda:self.controller.command('test')); test_voice.setToolTip('Simular fala sem microfone · Ctrl+Espaço'); tools.addWidget(test_voice)
         tools.addStretch(); self.output_button=button('Janela do avatar',self.open_capture,True)
         self.output_button.setToolTip('Abrir a saída separada para capturar no OBS · Ctrl+Shift+O')
         tools.addWidget(self.output_button)
@@ -184,8 +188,9 @@ class StudioWindow(QMainWindow):
         self.usage=ProcessUsage(); self.resource_label=label('','muted'); self.statusBar().addPermanentWidget(self.resource_label)
         self.stats_timer=QTimer(self); self.stats_timer.timeout.connect(self.update_resources); self.stats_timer.start(2000)
         QShortcut(QKeySequence('Ctrl+O'),self).activated.connect(self.choose_any)
-        QShortcut(QKeySequence('Ctrl+F'),self).activated.connect(self.focus_library)
-        QShortcut(QKeySequence('Space'),self).activated.connect(lambda:self.controller.command('test'))
+        for chord,callback in (('Ctrl+F',self.focus_library),('Ctrl+Space',lambda:self.controller.command('test'))):
+            shortcut=QShortcut(QKeySequence(chord),self); shortcut.activated.connect(callback)
+            self.ui_shortcuts[chord]=shortcut
         QShortcut(QKeySequence('Ctrl+M'),self).activated.connect(self.controller.toggle_microphone)
         QShortcut(QKeySequence('Ctrl+T'),self).activated.connect(self.controller.toggle_tracking)
         QShortcut(QKeySequence('Ctrl+P'),self).activated.connect(self.controller.toggle_pause)
@@ -206,7 +211,10 @@ class StudioWindow(QMainWindow):
         for shortcut in self.local_live_shortcuts:
             shortcut.setEnabled(False); shortcut.deleteLater()
         self.local_live_shortcuts=[]
-        for chord,action,_ in shortcut_rows(self.controller.preferences['shortcut_bindings'], self.shortcut_scenes()):
+        rows=shortcut_rows(self.controller.preferences['shortcut_bindings'], self.shortcut_scenes())
+        used={chord for chord,_,_ in rows}
+        for chord,shortcut in self.ui_shortcuts.items(): shortcut.setEnabled(chord not in used)
+        for chord,action,_ in rows:
             shortcut=QShortcut(QKeySequence(chord),self)
             shortcut.setAutoRepeat(False)
             shortcut.activated.connect(lambda value=action:self.handle_live_shortcut(value))
