@@ -14,5 +14,5 @@ python -m PyInstaller --noconfirm --clean 2DCam.spec
 if errorlevel 1 exit /b 1
 python scripts\build_standalone.py
 if errorlevel 1 exit /b 1
-echo Executavel unico pronto: dist\2DCam-Studio-3.12.exe
+echo Executavel unico pronto: dist\2DCam-Studio-3.13.exe
 pause

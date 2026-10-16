@@ -23,6 +23,7 @@ DEFAULT_BINDINGS = {action: chord for chord, action, _ in SHORTCUTS}
 RESERVED = ('Ctrl+O', 'Ctrl+M', 'Ctrl+T', 'Ctrl+P', 'Ctrl+Shift+O', 'Space', 'Ctrl+Z', 'Ctrl+Shift+Z')
 SCENE_PREFIX = 'scene:'
 MAX_SCENES = 64
+SCENE_ARROWS = ('Up', 'Down', 'Left', 'Right')
 
 
 def scene_action(name):
@@ -49,8 +50,9 @@ def validate_bindings(value):
         if sequence.count() != 1 or not normalized or sequence[0].key().value == 0x1ffffff:
             raise ValueError('Use uma única combinação por ação.')
         if normalized in used: raise ValueError('Há uma combinação repetida ou reservada pelo app: ' + normalized)
-        if '+' not in normalized and not (normalized.startswith('F') and normalized[1:].isdigit() and 1 <= int(normalized[1:]) <= 24):
-            raise ValueError('Use Ctrl/Alt/Shift ou uma tecla F1…F24 para não interferir na digitação.')
+        arrow = is_scene_action(action) and normalized in SCENE_ARROWS
+        if '+' not in normalized and not arrow and not (normalized.startswith('F') and normalized[1:].isdigit() and 1 <= int(normalized[1:]) <= 24):
+            raise ValueError('Use Ctrl/Alt/Shift ou F1…F24. Para cenas, também pode usar as setas.')
         used.add(normalized); result[action] = normalized
     return result
 

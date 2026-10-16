@@ -4,7 +4,7 @@ from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QTextBrowser, QDialo
 
 from avatarcam.desktop.widgets import ChoiceBox as QComboBox
 
-VERSION = '3.12.0'
+VERSION = '3.13.0'
 ROOT = Path(__file__).resolve().parents[2]
 
 

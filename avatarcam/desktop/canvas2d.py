@@ -13,6 +13,8 @@ class Avatar2D(QWidget):
         self.start = time.monotonic(); self.paused_at=None; self.paused_seconds=0.; self.pixmaps = OrderedDict(); self.cache_revision = -1; self.pixmap_bytes = 0; self.drag_start = None; self.last_error=None
         self.animation_epoch=controller.animation_epoch
         self.setMinimumSize(260, 260); self.setMouseTracking(True)
+        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.controller.changed.connect(self.update)
 
     def frame(self, role, seconds):
